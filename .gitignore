@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-shm
+*.sqlite-wal
+
+# Uploaded files
+backend/data/uploads/
+
+# Backups
+*.backup
+
+# Logs
+*.loggit restore --staged backend/server.js.backup

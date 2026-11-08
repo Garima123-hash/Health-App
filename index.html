@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CareSphere | Hospital Management</title>
+<link rel="stylesheet" href="css/styles.css" />
+
+</head>
+<body>
+<div id="landing" class="landing">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
+    <nav class="toplinks"><a href="#features">Platform</a><a href="#features">Features</a><a href="#about">About</a><button class="btn btn-primary" onclick="openAuth('user')">Sign in <span>↗</span></button></nav>
+    <button class="btn btn-primary" onclick="openAuth('user')">Get started ↗</button>
+  </header>
+  <main class="hero">
+    <section>
+      <div class="eyebrow"><span class="pulse"></span> SMARTER CARE. HEALTHIER TOMORROWS.</div>
+      <h1>Healthcare that puts <span>people first.</span></h1>
+      <p class="hero-copy">A connected hospital experience for patients, clinicians, and administrators. Manage appointments, understand your health journey, and bring essential care services into one simple place.</p>
+      <div class="hero-actions"><button class="btn btn-primary" onclick="openAuth('user')">Explore patient portal <span>→</span></button><button class="btn btn-outline" onclick="openAuth('admin')">Administrator access ↗</button></div>
+      <div class="trust-row"><div class="trust-item"><span class="check">✓</span> Patient-first design</div><div class="trust-item"><span class="check">✓</span> Clear health information</div><div class="trust-item"><span class="check">✓</span> One connected portal</div></div>
+    </section>
+    <section class="visual" aria-label="Healthcare illustration">
+      <div class="visual-bg"></div>
+      <div class="float-card one"><div class="float-title">PATIENT SATISFACTION</div><div class="float-value">4.9 <span style="color:#f4b544;font-size:17px">★</span></div><div class="float-sub">Care that feels personal</div></div>
+      <svg class="medical-illustration" viewBox="0 0 500 470" role="img" aria-label="Illustration of a healthcare professional and medical dashboard">
+        <circle cx="255" cy="215" r="164" fill="#d1eddf"/><circle cx="255" cy="215" r="132" fill="#eaf8f0"/>
+        <rect x="300" y="63" width="112" height="83" rx="13" fill="#fff" stroke="#d5eade" stroke-width="2"/><rect x="315" y="79" width="82" height="8" rx="4" fill="#e1eee6"/><rect x="315" y="95" width="53" height="8" rx="4" fill="#e1eee6"/><path d="M317 125l16-12 13 6 15-19 17 8 17-16" stroke="#159673" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="62" y="245" width="117" height="113" rx="16" fill="#fff" stroke="#d5eade" stroke-width="2"/><rect x="78" y="263" width="85" height="8" rx="4" fill="#dbece2"/><rect x="78" y="279" width="60" height="7" rx="3.5" fill="#e7f1eb"/><circle cx="100" cy="321" r="16" fill="#e0f4e8"/><path d="M100 310v22M89 321h22" stroke="#16876b" stroke-width="4" stroke-linecap="round"/><rect x="124" y="313" width="37" height="6" rx="3" fill="#b9dfc9"/><rect x="124" y="325" width="28" height="6" rx="3" fill="#e0eee5"/>
+        <ellipse cx="257" cy="413" rx="112" ry="18" fill="#b6dfc8" opacity=".55"/>
+        <path d="M183 205c-7-40 15-76 52-76 42 0 66 30 61 74l-10 70H193z" fill="#176e5a"/>
+        <path d="M201 183c-4-27 8-49 34-49 27 0 39 22 35 49l-7 31h-56z" fill="#f0b993"/>
+        <path d="M198 175c-8-29 9-56 37-56 25 0 42 19 38 46l-17-12-9-17c-9 13-25 20-49 19z" fill="#294b42"/>
+        <path d="M211 213l-16 27 18 53h68l14-55-17-25-17 15h-34z" fill="#fff"/><path d="M234 222l11 12 12-12-3 71h-18z" fill="#d8f0e2"/><path d="M245 233v36" stroke="#13916f" stroke-width="2"/><circle cx="245" cy="247" r="3" fill="#13916f"/>
+        <path d="M194 242c-13 7-25 23-27 48l-9 70c-1 10 15 14 19 3l19-61 12-31z" fill="#f0b993"/><path d="M286 241c16 11 25 25 30 48l11 53c2 11-14 16-19 5l-25-51-11-30z" fill="#f0b993"/>
+        <path d="M214 287l-14 80h-25l9-82z" fill="#fff"/><path d="M271 287l20 80h-25l-16-80z" fill="#fff"/>
+        <path d="M177 364h29l-2 29h-47c0-14 7-24 20-29zM267 364h25l16 22c4 8-1 13-9 13h-39z" fill="#244c40"/>
+        <rect x="347" y="250" width="74" height="90" rx="13" fill="#fff" stroke="#d4eadd" stroke-width="2"/><circle cx="384" cy="275" r="13" fill="#e4f5eb"/><path d="M384 267v16M376 275h16" stroke="#13866b" stroke-width="3" stroke-linecap="round"/><rect x="362" y="298" width="44" height="6" rx="3" fill="#dcece3"/><rect x="362" y="310" width="33" height="6" rx="3" fill="#dcece3"/><rect x="362" y="322" width="39" height="6" rx="3" fill="#b8e0c9"/>
+        <circle cx="120" cy="153" r="8" fill="#a7d9be"/><circle cx="393" cy="188" r="10" fill="#a7d9be"/><path d="M108 190h20M118 180v20" stroke="#16876b" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <div class="float-card two"><div style="display:flex;align-items:center;gap:10px"><div style="width:35px;height:35px;border-radius:11px;background:#e5f6ed;display:grid;place-items:center;color:#13866b;font-size:19px">✓</div><div><div class="float-title">CARE, SIMPLIFIED</div><div style="font-weight:800;font-size:13px;margin-top:4px">Your health, in one place</div></div></div></div>
+    </section>
+  </main>
+  <section class="features" id="features"><div class="section-inner" style="text-align:center"><div class="section-kicker">ONE PLATFORM, BETTER CARE</div><h2 class="section-heading">Everything you need, thoughtfully connected.</h2><p class="section-sub">Designed to make hospital journeys clearer for patients and daily operations easier for care teams.</p><div class="feature-grid">
+    <article class="feature"><div class="feature-icon">♡</div><h3>Patient-first experience</h3><p>Book appointments, view prescriptions, track upcoming visits, and keep key health details together.</p></article>
+    <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
+    <article class="feature"><div class="feature-icon">⌁</div><h3>Clear, connected insights</h3><p>Present useful summaries and status indicators in an accessible, responsive dashboard.</p></article>
+  </div></div></section>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a frontend demonstration for a hackathon. The data is sample data; authentication, storage, notifications, and medical integrations need a secure backend before real-world use.</div></div></section>
+  <footer class="footer">© 2026 CareSphere Health Platform · Designed for a more connected care experience</footer>
+</div>
+
+<div id="authOverlay" class="auth-overlay hidden" onclick="if(event.target===this)closeAuth()">
+  <div class="auth-modal">
+    <button class="close" onclick="closeAuth()" aria-label="Close">×</button>
+    <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>SECURE PORTAL</small></div></div>
+    <h2 class="auth-heading">Welcome back</h2><p class="auth-sub">Sign in to continue to your personalised healthcare workspace.</p>
+    <div class="role-switch"><button id="roleUser" class="role-btn active" onclick="setRole('user')">♙ Patient / User</button><button id="roleAdmin" class="role-btn" onclick="setRole('admin')">▦ Administrator</button></div>
+    <form id="loginForm" onsubmit="login(event)">
+      <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required autocomplete="username"></div>
+      <div class="field"><label for="password">Password</label><input id="password" type="password" placeholder="Enter your password" required autocomplete="current-password"></div>
+      <div class="form-row"><label style="display:flex;align-items:center;gap:7px"><input type="checkbox" style="accent-color:var(--green)"> Remember me</label><a href="#" onclick="event.preventDefault();toast('For this demo, use the sample login details below.')">Forgot password?</a></div>
+      <button class="btn btn-primary full" type="submit">Sign in securely →</button>
+      <div id="loginError" class="error"></div>
+    </form>
+    <div class="demo-note" id="authModeNote"><span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Use a test account while developing. Your password is stored as a hash on the server.</small></div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside id="sidebar" class="sidebar">
+    <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
+    <div class="nav-label">Workspace</div><nav id="navItems"></nav>
+    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Find help using the support centre or contact your care team.</p><button class="btn btn-light btn-sm" onclick="toast('Support centre: this demo has no live support connection.')">Visit support →</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
+  </aside>
+  <main class="app-main">
+    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" onclick="toast('You are all caught up!')" aria-label="Notifications">♧<span class="notification-dot"></span></button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Vedant Sharma</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
+    <div class="content">
+      <section id="page-dashboard" class="page-section active"></section>
+      <section id="page-appointments" class="page-section"></section>
+      <section id="page-doctors" class="page-section"></section>
+      <section id="page-records" class="page-section"></section>
+      <section id="page-prescriptions" class="page-section"></section>
+      <section id="page-billing" class="page-section"></section>
+      <section id="page-patients" class="page-section"></section>
+      <section id="page-staff" class="page-section"></section>
+      <section id="page-reports" class="page-section"></section>
+      <section id="page-settings" class="page-section"></section>
+    </div>
+  </main>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
