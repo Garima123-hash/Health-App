@@ -48,7 +48,7 @@
     <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
     <article class="feature"><div class="feature-icon">⌁</div><h3>Clear, connected insights</h3><p>Present useful summaries and status indicators in an accessible, responsive dashboard.</p></article>
   </div></div></section>
-  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Account registration, sessions, doctor listings, appointments, and profile updates use a local SQLite backend. Health records, prescriptions, billing, notifications, and several administration tools are not connected. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Accounts, hospital workspaces, appointments, doctor listings, patient-owned report uploads, prescription and invoice records, and dashboard summaries use the MongoDB-backed API. Optional Women’s Health logging and its local source-retrieval guide are not AI, cannot diagnose PCOS/PCOD or interpret medical history, and do not provide treatment advice. The report overview only extracts selectable PDF text locally; it cannot read scans or images. Password reset, real payment processing, and medical integrations are not provided. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
   <footer class="footer">© 2026 CareSphere Health Platform · Designed for a more connected care experience</footer>
 </div>
 
@@ -77,7 +77,8 @@
     <form id="bookingForm" onsubmit="submitAppointment(event)">
       <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required></select></div>
       <div class="field"><label for="bookingDate">Date and time</label><input id="bookingDate" name="appointmentAt" type="datetime-local" required></div>
-      <div class="field"><label for="bookingReason">Reason for visit</label><input id="bookingReason" name="reason" type="text" maxlength="120" value="Consultation" placeholder="Consultation"></div>
+      <div class="field"><label for="bookingReason">Reason for visit</label><select id="bookingReason" name="reason" onchange="toggleOtherReason(this.value)" required><option>General consultation</option><option>Follow-up visit</option><option>New or worsening symptoms</option><option>Prescription review</option><option>Test results discussion</option><option>Preventive check-up</option><option value="Other">Other / not listed</option></select></div>
+      <div id="bookingReasonDetailsField" class="field hidden"><label for="bookingReasonDetails">Brief reason</label><input id="bookingReasonDetails" type="text" maxlength="110" placeholder="Briefly describe your reason"></div>
       <div id="bookingError" class="error" role="alert"></div>
       <div class="booking-actions"><button class="btn btn-outline" type="button" onclick="closeBooking()">Cancel</button><button id="bookingSubmit" class="btn btn-primary" type="submit">Request appointment</button></div>
     </form>
@@ -88,21 +89,25 @@
   <aside id="sidebar" class="sidebar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
     <div class="nav-label">Workspace</div><nav id="navItems"></nav>
-    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Support services are not connected in this prototype.</p><button class="btn btn-light btn-sm" type="button" disabled>Support unavailable</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
+    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Ask your project administrator for help with this local prototype.</p></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
   </aside>
   <main class="app-main">
-    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" type="button" disabled aria-label="Notifications are not connected" title="Notifications are not connected">♧</button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Patient</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
+    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" type="button" onclick="showNotifications()" aria-label="Show appointment and billing updates" title="Appointment and billing updates">♧<span class="notification-dot"></span></button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Patient</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
     <div class="content">
       <section id="page-dashboard" class="page-section active"></section>
       <section id="page-appointments" class="page-section"></section>
       <section id="page-doctors" class="page-section"></section>
       <section id="page-records" class="page-section"></section>
+      <section id="page-ai" class="page-section"></section>
+      <section id="page-womens-health" class="page-section"></section>
       <section id="page-prescriptions" class="page-section"></section>
       <section id="page-billing" class="page-section"></section>
       <section id="page-patients" class="page-section"></section>
       <section id="page-staff" class="page-section"></section>
       <section id="page-reports" class="page-section"></section>
+      <section id="page-hospitals" class="page-section"></section>
       <section id="page-settings" class="page-section"></section>
+      <section id="page-faq" class="page-section"></section>
     </div>
   </main>
 </div>
