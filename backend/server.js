@@ -14,7 +14,9 @@ const pdfjs = import('pdfjs-dist/legacy/build/pdf.mjs');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const ROOT = path.join(__dirname, '..');
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.CARESPHERE_DATA_DIR
+  ? path.resolve(process.env.CARESPHERE_DATA_DIR)
+  : path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 // Store uploaded medical reports outside the public frontend.
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
@@ -86,7 +88,8 @@ CREATE TABLE IF NOT EXISTS invoices (
  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
  status TEXT NOT NULL DEFAULT 'Due' CHECK(status IN ('Due','Paid')),
  created_at TEXT NOT NULL DEFAULT (datetime('now')),
- paid_at TEXT
+ paid_at TEXT,
+ payment_method TEXT
 );
 CREATE INDEX IF NOT EXISTS appointments_user_date ON appointments(user_id, appointment_at);
 CREATE INDEX IF NOT EXISTS reports_user_date ON reports(user_id, created_at);
@@ -107,9 +110,24 @@ ensureColumn('users', 'age', 'INTEGER');
 ensureColumn('users', 'hospital_id', 'INTEGER REFERENCES hospitals(id)');
 ensureColumn('doctors', 'hospital_id', 'INTEGER REFERENCES hospitals(id)');
 ensureColumn('reports', 'shared_with_hospital', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('reports', 'summary_count', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('reports', 'summary_last_used_at', 'TEXT');
+ensureColumn('invoices', 'payment_method', 'TEXT');
 const defaultHospitalName = cleanEnv(process.env.DEFAULT_HOSPITAL_NAME, 'CareSphere Community Hospital');
-db.prepare('INSERT OR IGNORE INTO hospitals(name) VALUES(?)').run(defaultHospitalName);
+const starterHospitalLocations = [
+ { name: defaultHospitalName, city: 'Central District' },
+ { name: 'CareSphere North Clinic', city: 'North District' },
+ { name: 'CareSphere South Clinic', city: 'South District' }
+].filter((hospital, index, hospitals) =>
+ hospitals.findIndex(item => item.name.toLowerCase() === hospital.name.toLowerCase()) === index
+);
+const addHospital = db.prepare(`INSERT INTO hospitals(name,city) VALUES(?,?)
+ ON CONFLICT(name) DO UPDATE SET city=CASE WHEN hospitals.city='' THEN excluded.city ELSE hospitals.city END`);
+for (const hospital of starterHospitalLocations) addHospital.run(hospital.name, hospital.city);
 const defaultHospital = db.prepare('SELECT id FROM hospitals WHERE name=? COLLATE NOCASE').get(defaultHospitalName);
+const starterHospitals = starterHospitalLocations.map(hospital =>
+ db.prepare('SELECT id,name FROM hospitals WHERE name=? COLLATE NOCASE').get(hospital.name)
+);
 db.prepare('UPDATE users SET hospital_id=? WHERE hospital_id IS NULL').run(defaultHospital.id);
 db.prepare('UPDATE doctors SET hospital_id=? WHERE hospital_id IS NULL').run(defaultHospital.id);
 db.exec(`CREATE INDEX IF NOT EXISTS doctors_hospital_name ON doctors(hospital_id,name);
@@ -127,7 +145,11 @@ const seedDoctors = [
  ['Dr. Arjun Das','Neurology','11 years experience']
 ];
 const addDoctor = db.prepare('INSERT INTO doctors (name,specialty,experience,hospital_id) SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM doctors WHERE name = ? COLLATE NOCASE AND hospital_id = ?)');
-for (const [name, specialty, experience] of seedDoctors) addDoctor.run(name, specialty, experience, defaultHospital.id, name, defaultHospital.id);
+for (const hospital of starterHospitals) {
+ for (const [name, specialty, experience] of seedDoctors) {
+   addDoctor.run(name, specialty, experience, hospital.id, name, hospital.id);
+ }
+}
 
 function cleanEnv(value, fallback) {
  const normalized = typeof value === 'string' ? value.trim().slice(0,120) : '';
@@ -156,6 +178,9 @@ async function seedAdmin() {
    userId = Number(result.lastInsertRowid);
  }
  db.prepare('INSERT OR IGNORE INTO hospital_admins(user_id,hospital_id) VALUES(?,?)').run(userId,hospital.id);
+ for (const workspace of starterHospitals) {
+   db.prepare('INSERT OR IGNORE INTO hospital_admins(user_id,hospital_id) VALUES(?,?)').run(userId,workspace.id);
+ }
  console.log(`Administrator account configured for ${email}`);
 }
 
@@ -354,7 +379,9 @@ app.post('/api/appointments', requireAuth, (req,res) => {
  if (req.session.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts can request appointments.' });
  const doctorId = Number(req.body.doctorId);
  const appointmentAt = cleanText(req.body.appointmentAt, 40);
- const reason = cleanText(req.body.reason || 'Consultation', 120) || 'Consultation';
+ const reason = cleanText(req.body.reason, 120);
+ const visitReasons = ['General consultation','Follow-up visit','New or worsening symptoms','Prescription review','Test results discussion','Preventive check-up'];
+ if (!visitReasons.includes(reason) && !/^Other: .{1,110}$/.test(reason)) return res.status(400).json({ error: 'Choose a visit reason or briefly describe another reason.' });
  const doctor = db.prepare('SELECT id FROM doctors WHERE id=? AND available=1 AND hospital_id=?').get(doctorId,req.session.user.hospital_id);
  if (!doctor) return res.status(400).json({ error: 'Please choose a valid doctor.' });
  const parsed = new Date(appointmentAt);
@@ -388,7 +415,7 @@ app.get('/api/admin/patients', requireAdmin, (req,res) => {
  res.json({ patients: db.prepare("SELECT id,name,email,age,created_at FROM users WHERE role='patient' AND hospital_id=? ORDER BY created_at DESC").all(req.session.user.hospital_id) });
 });
 app.get('/api/reports', requireAuth, (req,res) => {
- const reports = db.prepare('SELECT id,original_name,mime_type,file_size,status,shared_with_hospital,created_at FROM reports WHERE user_id=? ORDER BY created_at DESC').all(req.session.user.id);
+ const reports = db.prepare('SELECT id,original_name,mime_type,file_size,status,shared_with_hospital,summary_count,summary_last_used_at,created_at FROM reports WHERE user_id=? ORDER BY created_at DESC').all(req.session.user.id);
  res.json({ reports });
 });
 app.get('/api/admin/reports', requireAdmin, (req,res) => {
@@ -463,10 +490,16 @@ app.post('/api/reports/:id/summary', requireAuth, async (req,res,next) => {
       const score = words.reduce((sum,word)=>sum+(frequencies.get(word)||0),0)/Math.max(words.length,1);
       return {sentence,index,score};
     }).sort((a,b)=>b.score-a.score).slice(0,4).sort((a,b)=>a.index-b.index);
+    db.prepare(`UPDATE reports SET summary_count=summary_count+1,summary_last_used_at=datetime('now')
+      WHERE stored_name=? AND user_id=?`).run(report.stored_name,req.session.user.id);
+    const usage = db.prepare('SELECT summary_count,summary_last_used_at FROM reports WHERE stored_name=? AND user_id=?')
+      .get(report.stored_name,req.session.user.id);
     res.json({
       summary: ranked.map(item=>item.sentence.slice(0,500)),
       pagesRead: pagesToRead,
       totalPages: document.numPages,
+      usageCount: usage.summary_count,
+      lastUsedAt: usage.summary_last_used_at,
       method: 'local-extractive',
       notice: 'This is an automatically selected text extract, not AI diagnosis or medical advice. Confirm all details with your clinician.'
     });
@@ -489,7 +522,7 @@ app.delete('/api/reports/:id', requireAuth, (req,res) => {
 });
 app.get('/api/prescriptions', requireAuth, (req,res) => {
  const admin = req.session.user.role === 'admin';
- const prescriptions = db.prepare(`SELECT p.id,p.user_id,p.medication,p.directions,p.refills,p.status,p.created_at,u.name AS patient_name,d.name AS doctor_name
+ const prescriptions = db.prepare(`SELECT p.id,p.user_id,p.doctor_id,p.medication,p.directions,p.refills,p.status,p.created_at,u.name AS patient_name,d.name AS doctor_name
    FROM prescriptions p JOIN users u ON u.id=p.user_id LEFT JOIN doctors d ON d.id=p.doctor_id
    WHERE ${admin ? 'u.hospital_id=?' : 'p.user_id=?'} ORDER BY p.created_at DESC`).all(req.session.user.role==='admin'?req.session.user.hospital_id:req.session.user.id);
  res.json({ prescriptions });
@@ -507,9 +540,27 @@ app.post('/api/admin/prescriptions', requireAdmin, (req,res) => {
  const result = db.prepare('INSERT INTO prescriptions(user_id,doctor_id,medication,directions,refills) VALUES(?,?,?,?,?)').run(userId,doctorId,medication,directions,refills);
  res.status(201).json({ prescription: db.prepare('SELECT id,user_id,medication,directions,refills,status,created_at FROM prescriptions WHERE id=?').get(result.lastInsertRowid) });
 });
+app.patch('/api/admin/prescriptions/:id', requireAdmin, (req,res) => {
+ const doctorId = req.body.doctorId === '' || req.body.doctorId == null ? null : Number(req.body.doctorId);
+ const medication = cleanText(req.body.medication,120);
+ const directions = cleanText(req.body.directions,500);
+ const refills = Number(req.body.refills);
+ const status = req.body.status;
+ if (doctorId !== null && !db.prepare('SELECT id FROM doctors WHERE id=? AND hospital_id=?').get(doctorId,req.session.user.hospital_id)) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
+ if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
+ if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
+ if (!['Active','Completed','Stopped'].includes(status)) return res.status(400).json({ error: 'Choose a valid prescription status.' });
+ const result = db.prepare(`UPDATE prescriptions
+   SET doctor_id=?,medication=?,directions=?,refills=?,status=?
+   WHERE id=? AND EXISTS(SELECT 1 FROM users u
+     WHERE u.id=prescriptions.user_id AND u.hospital_id=?)`)
+   .run(doctorId,medication,directions,refills,status,Number(req.params.id),req.session.user.hospital_id);
+ if (!result.changes) return res.status(404).json({ error: 'Prescription not found in your hospital.' });
+ res.json({ ok: true });
+});
 app.get('/api/invoices', requireAuth, (req,res) => {
  const admin = req.session.user.role === 'admin';
- const invoices = db.prepare(`SELECT i.id,i.user_id,i.description,i.amount_cents,i.status,i.created_at,i.paid_at,u.name AS patient_name,u.email AS patient_email
+ const invoices = db.prepare(`SELECT i.id,i.user_id,i.description,i.amount_cents,i.status,i.created_at,i.paid_at,i.payment_method,u.name AS patient_name,u.email AS patient_email
    FROM invoices i JOIN users u ON u.id=i.user_id WHERE ${admin ? 'u.hospital_id=?' : 'i.user_id=?'} ORDER BY i.created_at DESC`).all(req.session.user.role==='admin'?req.session.user.hospital_id:req.session.user.id);
  res.json({ invoices });
 });
@@ -525,13 +576,16 @@ app.post('/api/admin/invoices', requireAdmin, (req,res) => {
 });
 app.post('/api/invoices/:id/pay-demo', requireAuth, (req,res) => {
  if (req.session.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts can update their demo payment status.' });
- const result = db.prepare("UPDATE invoices SET status='Paid',paid_at=datetime('now') WHERE id=? AND user_id=? AND status='Due'").run(Number(req.params.id),req.session.user.id);
+ const paymentMethods = ['pay-at-hospital','upi-demo','card-demo'];
+ const paymentMethod = req.body.paymentMethod;
+ if (!paymentMethods.includes(paymentMethod)) return res.status(400).json({ error: 'Choose one of the available demonstration payment methods.' });
+ const result = db.prepare("UPDATE invoices SET status='Paid',paid_at=datetime('now'),payment_method=? WHERE id=? AND user_id=? AND status='Due'").run(paymentMethod,Number(req.params.id),req.session.user.id);
  if (!result.changes) {
    const invoice = db.prepare('SELECT status FROM invoices WHERE id=? AND user_id=?').get(Number(req.params.id),req.session.user.id);
    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
    return res.status(409).json({ error: 'This invoice has already been paid.' });
  }
- res.json({ ok: true, payment: 'demo-only-no-charge' });
+ res.json({ ok: true, payment: 'demo-only-no-charge', paymentMethod });
 });
 app.get('/api/admin/analytics', requireAdmin, (req,res) => {
  const hospitalId = req.session.user.hospital_id;

@@ -77,7 +77,8 @@
     <form id="bookingForm" onsubmit="submitAppointment(event)">
       <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required></select></div>
       <div class="field"><label for="bookingDate">Date and time</label><input id="bookingDate" name="appointmentAt" type="datetime-local" required></div>
-      <div class="field"><label for="bookingReason">Reason for visit</label><input id="bookingReason" name="reason" type="text" maxlength="120" value="Consultation" placeholder="Consultation"></div>
+      <div class="field"><label for="bookingReason">Reason for visit</label><select id="bookingReason" name="reason" onchange="toggleOtherReason(this.value)" required><option>General consultation</option><option>Follow-up visit</option><option>New or worsening symptoms</option><option>Prescription review</option><option>Test results discussion</option><option>Preventive check-up</option><option value="Other">Other / not listed</option></select></div>
+      <div id="bookingReasonDetailsField" class="field hidden"><label for="bookingReasonDetails">Brief reason</label><input id="bookingReasonDetails" type="text" maxlength="110" placeholder="Briefly describe your reason"></div>
       <div id="bookingError" class="error" role="alert"></div>
       <div class="booking-actions"><button class="btn btn-outline" type="button" onclick="closeBooking()">Cancel</button><button id="bookingSubmit" class="btn btn-primary" type="submit">Request appointment</button></div>
     </form>
@@ -97,6 +98,7 @@
       <section id="page-appointments" class="page-section"></section>
       <section id="page-doctors" class="page-section"></section>
       <section id="page-records" class="page-section"></section>
+      <section id="page-ai" class="page-section"></section>
       <section id="page-prescriptions" class="page-section"></section>
       <section id="page-billing" class="page-section"></section>
       <section id="page-patients" class="page-section"></section>

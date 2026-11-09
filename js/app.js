@@ -18,7 +18,7 @@ const doctors=[
  {name:'Dr. Sana Khan',dept:'Paediatrics',exp:'10 years experience',time:'Oct 30 · 9:45 AM',symbol:'♡'},
  {name:'Dr. Arjun Das',dept:'Neurology',exp:'11 years experience',time:'Oct 31 · 1:30 PM',symbol:'✚'}
 ];
-const userNav=[['dashboard','⌂','Overview'],['appointments','▦','My appointments'],['doctors','✚','Find a doctor'],['records','▤','Health records'],['prescriptions','♧','Prescriptions'],['billing','＄','Bills & payments'],['faq','?','FAQs'],['settings','⚙','My profile']];
+const userNav=[['dashboard','⌂','Overview'],['appointments','▦','My appointments'],['doctors','✚','Find a doctor'],['records','▤','Health records'],['ai','✧','Reports & AI'],['prescriptions','♧','Prescriptions'],['billing','＄','Bills & payments'],['faq','?','FAQs'],['settings','⚙','My profile']];
 const adminNav=[['dashboard','⌂','Overview'],['appointments','▦','Appointments'],['patients','♙','Patients'],['doctors','✚','Doctors & departments'],['staff','♧','Staff management'],['prescriptions','♧','Prescriptions'],['billing','＄','Billing'],['reports','▥','Reports & analytics'],['hospitals','⌂','Hospitals'],['faq','?','FAQs'],['settings','⚙','Account settings']];
 function openAuth(role='user'){if(role==='admin'&&authMode==='register')toggleAuthMode();setRole(role);document.getElementById('authOverlay').classList.remove('hidden');document.getElementById('loginError').textContent='';}
 function closeAuth(){document.getElementById('authOverlay').classList.add('hidden')}
@@ -26,7 +26,7 @@ function setRole(role){state.role=role;document.getElementById('roleUser').class
 function login(e){e.preventDefault();const email=document.getElementById('email').value.trim();const pass=document.getElementById('password').value;if(!email||pass.length<4){document.getElementById('loginError').textContent='Please enter a valid email and a password with at least 4 characters.';return;}state.email=email;state.name=state.role==='admin'?'Hospital Administrator':(email.split('@')[0].replace(/[._-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Patient');closeAuth();document.getElementById('landing').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('profileName').textContent=state.name;document.getElementById('profileRole').textContent=state.role==='admin'?'Administrator':'Patient account';document.getElementById('avatarInitials').textContent=state.role==='admin'?'AD':state.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();buildNav();renderAll();go('dashboard');}
 function logout(){document.getElementById('app').classList.add('hidden');document.getElementById('landing').classList.remove('hidden');document.getElementById('sidebar').classList.remove('open');state.page='dashboard';}
 function buildNav(){const nav=state.role==='admin'?adminNav:userNav;document.getElementById('navItems').innerHTML=nav.map(([id,ico,label])=>`<button class="nav-item ${state.page===id?'active':''}" onclick="go('${id}')"><span class="nav-ico">${ico}</span>${label}</button>`).join('');}
-function go(page){state.page=page;document.querySelectorAll('.page-section').forEach(x=>x.classList.remove('active'));const section=document.getElementById('page-'+page);if(section)section.classList.add('active');document.getElementById('topPage').textContent=({dashboard:'Overview',appointments:state.role==='admin'?'Appointments':'My appointments',doctors:state.role==='admin'?'Doctors & departments':'Find a doctor',records:'Health records',prescriptions:'Prescriptions',billing:state.role==='admin'?'Billing':'Bills & payments',patients:'Patients',staff:'Staff management',reports:'Reports & analytics',hospitals:'Hospitals',faq:'FAQs',settings:state.role==='admin'?'Account settings':'My profile'})[page]||'Overview';buildNav();document.getElementById('sidebar').classList.remove('open');}
+function go(page){state.page=page;document.querySelectorAll('.page-section').forEach(x=>x.classList.remove('active'));const section=document.getElementById('page-'+page);if(section)section.classList.add('active');document.getElementById('topPage').textContent=({dashboard:'Overview',appointments:state.role==='admin'?'Appointments':'My appointments',doctors:state.role==='admin'?'Doctors & departments':'Find a doctor',records:'Health records',ai:'Reports & AI usage',prescriptions:'Prescriptions',billing:state.role==='admin'?'Billing':'Bills & payments',patients:'Patients',staff:'Staff management',reports:'Reports & analytics',hospitals:'Hospitals',faq:'FAQs',settings:state.role==='admin'?'Account settings':'My profile'})[page]||'Overview';buildNav();document.getElementById('sidebar').classList.remove('open');}
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
 function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.add('hidden'),3000)}
 function stat(title,value,icon,foot){return `<article class="stat-card"><div class="stat-head"><span>${title}</span><span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot">${foot}</div></article>`}
@@ -282,7 +282,9 @@ async function bookAppointment(doctorId=0) {
     defaultDate.setMinutes(0, 0, 0);
     document.getElementById('bookingDate').min = toLocalDateTimeValue(minDate);
     document.getElementById('bookingDate').value = toLocalDateTimeValue(defaultDate);
-    document.getElementById('bookingReason').value = 'Consultation';
+    document.getElementById('bookingReason').value = 'General consultation';
+    document.getElementById('bookingReasonDetails').value = '';
+    toggleOtherReason('General consultation');
     document.getElementById('bookingOverlay').classList.remove('hidden');
     document.getElementById('bookingOverlay').setAttribute('aria-hidden', 'false');
     select.focus();
@@ -291,6 +293,15 @@ async function bookAppointment(doctorId=0) {
     document.getElementById('bookingOverlay').classList.remove('hidden');
     document.getElementById('bookingOverlay').setAttribute('aria-hidden', 'false');
   }
+}
+
+function toggleOtherReason(reason) {
+  const field = document.getElementById('bookingReasonDetailsField');
+  const details = document.getElementById('bookingReasonDetails');
+  if (!field || !details) return;
+  const isOther = reason === 'Other';
+  field.classList.toggle('hidden', !isOther);
+  details.required = isOther;
 }
 
 function toLocalDateTimeValue(date) {
@@ -313,7 +324,13 @@ async function submitAppointment(event) {
   const error = document.getElementById('bookingError');
   const doctorId = Number(form.elements.doctorId.value);
   const appointmentAt = form.elements.appointmentAt.value;
-  const reason = form.elements.reason.value.trim() || 'Consultation';
+  const selectedReason = form.elements.reason.value;
+  const reasonDetails = document.getElementById('bookingReasonDetails').value.trim();
+  const reason = selectedReason === 'Other' ? `Other: ${reasonDetails}` : selectedReason;
+  if (selectedReason === 'Other' && !reasonDetails) {
+    error.textContent = 'Briefly describe your reason for visiting.';
+    return;
+  }
   error.textContent = '';
   submit.disabled = true;
   try {
@@ -342,7 +359,7 @@ async function submitAppointment(event) {
     }
     renderAll();
     go('appointments');
-    toast('Appointment request saved to the database.');
+    toast('Appointment saved. You can find it under My appointments.');
   } catch (err) {
     error.textContent = err.message || 'Could not save your appointment. Please try again.';
   } finally {
@@ -413,6 +430,7 @@ function renderAll() {
   document.getElementById('page-appointments').innerHTML = renderAppointments();
   document.getElementById('page-doctors').innerHTML = renderDoctors();
   document.getElementById('page-records').innerHTML = renderRecords();
+  document.getElementById('page-ai').innerHTML = renderPatientAIHub();
   document.getElementById('page-prescriptions').innerHTML = renderPrescriptions();
   document.getElementById('page-billing').innerHTML = renderBilling();
   document.getElementById('page-patients').innerHTML = patientDirectory();
@@ -534,30 +552,53 @@ function addPatient() {
 }
 
 function renderRecords() {
-  const rows = state.reports.map(report => `<tr><td><strong>${escapeHtml(report.original_name)}</strong><small>${escapeHtml(report.mime_type)}</small></td><td>${formatFileSize(report.file_size)}</td><td>${escapeHtml(formatAppointmentDate(report.created_at))}</td><td><span class="status ${report.shared_with_hospital?'active':'pending'}">${report.shared_with_hospital?'Shared with hospital':'Private'}</span><div class="record-actions"><button class="link-btn" onclick="downloadReport(${Number(report.id)})">Download</button>${report.mime_type==='application/pdf'?`<button class="link-btn" onclick="summarizeReport(${Number(report.id)})">Local summary</button>`:''}<button class="link-btn" onclick="setReportSharing(${Number(report.id)},${report.shared_with_hospital?0:1})">${report.shared_with_hospital?'Make private':'Share with hospital'}</button><button class="link-btn" onclick="deleteReport(${Number(report.id)})">Delete</button></div></td></tr>`).join('');
-  return `<div class="welcome"><div><h1>Health records</h1><p>Upload and manage your medical history for ${escapeHtml(state.hospital?.name || 'your hospital')}.</p></div></div><div class="panel"><h2>Upload a report</h2><form id="reportUploadForm" onsubmit="uploadReport(event)"><div class="field"><label for="reportFile">PDF, JPG, or PNG (maximum 10 MB)</label><input id="reportFile" name="report" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required></div><label class="check-row"><input type="checkbox" name="shareWithHospital" value="true"> Share this file with my hospital care team</label><div class="notice">Sharing is optional. Only shared files appear in your hospital’s administrator workspace; your other files remain private.</div><div id="reportError" class="error" role="alert"></div><button id="reportUploadButton" class="btn btn-primary" type="submit">Upload report</button></form></div><div class="panel" style="margin-top:16px">${panelHead('Your medical history','You control whether each file is shared with your hospital')}${rows?`<div class="table-wrap"><table><thead><tr><th>Report</th><th>Size</th><th>Uploaded</th><th>Privacy and actions</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty-state"><strong>No reports uploaded</strong><p>Choose a file above to add your first report.</p></div>'}<div id="reportSummary"></div></div><div class="notice" style="margin-top:16px">The local PDF helper extracts selected text on this server only. It is not an AI diagnosis, cannot read scanned images, and does not provide medical advice.</div>`;
+  const rows = state.reports.map(report => `<tr><td><strong>${escapeHtml(report.original_name)}</strong><small>${escapeHtml(report.mime_type)}</small></td><td>${formatFileSize(report.file_size)}</td><td>${escapeHtml(formatAppointmentDate(report.created_at))}</td><td><span class="status ${report.shared_with_hospital?'active':'pending'}">${report.shared_with_hospital?'Shared with hospital':'Private'}</span><div class="record-actions"><button class="link-btn" onclick="downloadReport(${Number(report.id)})">Download</button>${report.mime_type==='application/pdf'?`<button class="link-btn" onclick="go('ai')">Report overview & usage</button>`:''}<button class="link-btn" onclick="setReportSharing(${Number(report.id)},${report.shared_with_hospital?0:1})">${report.shared_with_hospital?'Make private':'Share with hospital'}</button><button class="link-btn" onclick="deleteReport(${Number(report.id)})">Delete</button></div></td></tr>`).join('');
+  return `<div class="welcome"><div><h1>Health records</h1><p>Upload and manage your medical history for ${escapeHtml(state.hospital?.name || 'your hospital')}.</p></div><button class="btn btn-outline" onclick="go('ai')">Reports & AI usage →</button></div><div class="panel"><h2>Upload a report</h2><form id="reportUploadForm" onsubmit="uploadReport(event)"><div class="field"><label for="reportFile">PDF, JPG, or PNG (maximum 10 MB)</label><input id="reportFile" name="report" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required></div><label class="check-row"><input type="checkbox" name="shareWithHospital" value="true"> Share this file with my hospital care team</label><div class="notice">Sharing is optional. Only shared files appear in your hospital’s administrator workspace; your other files remain private.</div><div id="reportError" class="error" role="alert"></div><button id="reportUploadButton" class="btn btn-primary" type="submit">Upload report</button></form></div><div class="panel" style="margin-top:16px">${panelHead('Your medical history','You control whether each file is shared with your hospital')}${rows?`<div class="table-wrap"><table><thead><tr><th>Report</th><th>Size</th><th>Uploaded</th><th>Privacy and actions</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty-state"><strong>No reports uploaded</strong><p>Choose a file above to add your first report.</p></div>'}</div>`;
+}
+
+function renderPatientAIHub() {
+  if (state.role !== 'user') return '';
+  const summariesUsed = state.reports.reduce((total, report) => total + Number(report.summary_count || 0), 0);
+  const rows = state.reports.map(report => `<tr><td><strong>${escapeHtml(report.original_name)}</strong><small>${escapeHtml(report.mime_type)}</small></td><td>${escapeHtml(formatAppointmentDate(report.created_at))}</td><td>${Number(report.summary_count || 0)}</td><td>${report.summary_last_used_at ? escapeHtml(formatAppointmentDate(report.summary_last_used_at)) : 'Not used'}</td><td>${report.mime_type === 'application/pdf' ? `<button class="btn btn-light btn-sm" onclick="summarizeReport(${Number(report.id)})">Create local overview</button>` : '<span>PDF text only</span>'}</td></tr>`).join('');
+  const reportList = rows
+    ? `<div class="table-wrap"><table><thead><tr><th>Report</th><th>Uploaded</th><th>Overviews created</th><th>Last used</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : `<div class="empty-state"><strong>No reports yet</strong><p>Upload a report in Health records to see it here.</p><button class="btn btn-light" onclick="go('records')">Open health records</button></div>`;
+  return `<div class="welcome"><div><h1>Reports & AI usage</h1><p>View your uploaded reports and run a private, local text overview.</p></div><button class="btn btn-outline" onclick="go('records')">Upload or manage reports →</button></div><div class="stats">${stat('Your reports',String(state.reports.length),'▤','Only files in your account')}${stat('Local overviews used',String(summariesUsed),'✧','Usage tracked per report')}${stat('External AI requests','0','↗','Your reports are not sent to AI providers')}${stat('AI prescription advice','Off','♧','Medication guidance stays with your clinician')}</div><div class="notice"><strong>Important:</strong> The document overview is a local extractive text helper, not an AI model. It selects text from readable PDFs; it cannot interpret results, read scans, diagnose, or recommend treatment. No report is sent to an external AI service.</div><div class="panel">${panelHead('Your report overview usage','Generate a summary and see when/how often you used it')}${reportList}<div id="reportSummary"></div></div>`;
 }
 
 function renderPrescriptions() {
-  const rows = state.prescriptions.map(prescription => `<tr>${state.role==='admin'?`<td>${escapeHtml(prescription.patient_name)}</td>`:''}<td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status ${prescription.status.toLowerCase()}">${escapeHtml(prescription.status)}</span></td></tr>`).join('');
-  const createForm = state.role === 'admin' ? `<div class="panel" style="margin-bottom:16px"><h2>Add prescription record</h2><form id="prescriptionForm" onsubmit="createPrescription(event)"><div class="field"><label for="prescriptionPatient">Patient</label><select id="prescriptionPatient" name="userId" required><option value="">Choose a patient</option>${state.patients.map(patient=>`<option value="${Number(patient.id)}">${escapeHtml(patient.name)} — ${escapeHtml(patient.email)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionDoctor">Clinician</label><select id="prescriptionDoctor" name="doctorId"><option value="">Not specified</option>${apiDoctors.map(doctor=>`<option value="${Number(doctor.id)}">${escapeHtml(doctor.name)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionMedication">Prescription name</label><input id="prescriptionMedication" name="medication" maxlength="120" required></div><div class="field"><label for="prescriptionDirections">Directions as provided by clinician</label><textarea id="prescriptionDirections" name="directions" maxlength="500" required></textarea></div><div class="field"><label for="prescriptionRefills">Refills</label><input id="prescriptionRefills" name="refills" type="number" min="0" max="20" value="0" required></div><div id="prescriptionError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Save prescription</button></form></div>` : '';
+  const rows = state.prescriptions.map(prescription => `<tr>${state.role==='admin'?`<td>${escapeHtml(prescription.patient_name)}</td>`:''}<td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status ${prescription.status.toLowerCase()}">${escapeHtml(prescription.status)}</span></td>${state.role==='admin'?`<td><button class="link-btn" onclick="editPrescription(${Number(prescription.id)})">Edit</button></td>`:''}</tr>`).join('');
+  const createForm = state.role === 'admin' ? `<div class="panel" style="margin-bottom:16px"><h2 id="prescriptionFormTitle">Add prescription record</h2><form id="prescriptionForm" onsubmit="createPrescription(event)"><input type="hidden" name="id" value=""><div class="field"><label for="prescriptionPatient">Patient</label><select id="prescriptionPatient" name="userId" required><option value="">Choose a patient</option>${state.patients.map(patient=>`<option value="${Number(patient.id)}">${escapeHtml(patient.name)} — ${escapeHtml(patient.email)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionDoctor">Clinician</label><select id="prescriptionDoctor" name="doctorId"><option value="">Not specified</option>${apiDoctors.map(doctor=>`<option value="${Number(doctor.id)}">${escapeHtml(doctor.name)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionMedication">Prescription name</label><input id="prescriptionMedication" name="medication" maxlength="120" required></div><div class="field"><label for="prescriptionDirections">Directions as provided by clinician</label><textarea id="prescriptionDirections" name="directions" maxlength="500" required></textarea></div><div class="field"><label for="prescriptionRefills">Refills</label><input id="prescriptionRefills" name="refills" type="number" min="0" max="20" value="0" required></div><div class="field hidden" id="prescriptionStatusField"><label for="prescriptionStatus">Status</label><select id="prescriptionStatus" name="status"><option>Active</option><option>Completed</option><option>Stopped</option></select></div><div id="prescriptionError" class="error" role="alert"></div><button class="btn btn-primary" id="prescriptionSubmit" type="submit">Save prescription</button><button class="btn btn-outline hidden" id="prescriptionCancel" type="button" onclick="cancelPrescriptionEdit()">Cancel edit</button></form></div>` : '';
   const patientHeading = state.role === 'admin' ? '<th>Patient</th>' : '';
   const emptyMessage = state.role === 'admin' ? 'Use the form above to add a record.' : 'Your care team has not added any prescription records.';
   const table = rows
-    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Prescription</th><th>Clinician</th><th>Directions</th><th>Refills</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Prescription</th><th>Clinician</th><th>Directions</th><th>Refills</th><th>Status</th>${state.role==='admin'?'<th>Action</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>No prescriptions on file</strong><p>${emptyMessage}</p></div>`;
-  return `<div class="welcome"><div><h1>Prescriptions</h1><p>${state.role==='admin'?'Create and review prescription records entered by the care team.':'Review prescription information shared with your account.'}</p></div><button class="btn btn-outline" onclick="exportPrescriptions()">↓ Download list</button></div>${createForm}<div class="panel">${panelHead('Prescription records','Follow directions from your licensed clinician')}${table}</div><div class="notice" style="margin-top:16px">For record-keeping only. Do not start, stop, or change medication based on this prototype; consult your licensed clinician.</div>`;
+  return `<div class="welcome"><div><h1>Prescriptions</h1><p>${state.role==='admin'?'Add and review prescription records for patients at your active hospital.':'Review prescription information added by your hospital care team.'}</p></div><button class="btn btn-outline" onclick="exportPrescriptions()">↓ Download list</button></div>${createForm}<div class="panel">${panelHead('Prescription records',state.role==='admin'?'Saved by your hospital and visible only to the selected patient.':'Records shared with your account by your hospital')}${table}</div><div class="notice" style="margin-top:16px">For record-keeping only. Prescription entries come from the hospital care team. AI does not choose, interpret, or change medication or doses. Ask your clinician or pharmacist if you have questions; do not change medication based on this prototype.</div>`;
 }
 
 function renderBilling() {
-  const rows = state.invoices.map(invoice => `<tr>${state.role==='admin'?`<td>${escapeHtml(invoice.patient_name)}<small>${escapeHtml(invoice.patient_email)}</small></td>`:''}<td>${escapeHtml(invoice.description)}</td><td>${(Number(invoice.amount_cents)/100).toLocaleString(undefined,{style:'currency',currency:'INR'})}</td><td><span class="status ${invoice.status==='Paid'?'completed':'pending'}">${escapeHtml(invoice.status)}</span></td><td>${state.role==='admin'?'':'<button class="btn btn-primary btn-sm" '+(invoice.status==='Due'?`onclick="payInvoiceDemo(${Number(invoice.id)})"`:'disabled')+'>'+(invoice.status==='Due'?'Mark demo payment':'Paid')+'</button>'}</td></tr>`).join('');
+  const paymentMethods = [
+    ['pay-at-hospital','Pay at hospital (demo)'],
+    ['upi-demo','UPI (demo; no transaction)'],
+    ['card-demo','Card (demo; no card details)']
+  ];
+  const paymentMethodLabels = Object.fromEntries(paymentMethods);
+  const rows = state.invoices.map(invoice => {
+    const payment = invoice.payment_method ? `<small>Demo method: ${escapeHtml(paymentMethodLabels[invoice.payment_method] || invoice.payment_method)}</small>` : '';
+    const action = state.role === 'admin' ? '—' : invoice.status === 'Due'
+      ? `<label class="payment-choice" for="paymentMethod-${Number(invoice.id)}">Payment choice</label><select id="paymentMethod-${Number(invoice.id)}">${paymentMethods.map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select><button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="payInvoiceDemo(${Number(invoice.id)})">Record demo payment</button>`
+      : 'Paid';
+    return `<tr>${state.role==='admin'?`<td>${escapeHtml(invoice.patient_name)}<small>${escapeHtml(invoice.patient_email)}</small></td>`:''}<td>${escapeHtml(invoice.description)}</td><td>${(Number(invoice.amount_cents)/100).toLocaleString(undefined,{style:'currency',currency:'INR'})}</td><td><span class="status ${invoice.status==='Paid'?'completed':'pending'}">${escapeHtml(invoice.status)}</span>${invoice.payment_method ? `<br>${payment}` : ''}</td><td>${action}</td></tr>`;
+  }).join('');
   const createForm = state.role === 'admin' ? `<div class="panel" style="margin-bottom:16px"><h2>Create invoice record</h2><form id="invoiceForm" onsubmit="createInvoice(event)"><div class="field"><label for="invoicePatient">Patient</label><select id="invoicePatient" name="userId" required><option value="">Choose a patient</option>${state.patients.map(patient=>`<option value="${Number(patient.id)}">${escapeHtml(patient.name)} — ${escapeHtml(patient.email)}</option>`).join('')}</select></div><div class="field"><label for="invoiceDescription">Description</label><input id="invoiceDescription" name="description" maxlength="160" required></div><div class="field"><label for="invoiceAmount">Amount (INR)</label><input id="invoiceAmount" name="amount" type="number" min="0.01" max="1000000" step="0.01" required></div><div id="invoiceError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Save invoice</button></form></div>` : '';
   const patientHeading = state.role === 'admin' ? '<th>Patient</th>' : '';
+  const actionHeading = state.role === 'admin' ? 'Action' : 'Payment option';
   const emptyMessage = state.role === 'admin' ? 'Create an invoice using the form above.' : 'No invoice records are linked to your account.';
   const table = rows
-    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Description</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Description</th><th>Amount</th><th>Status</th><th>${actionHeading}</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>No invoices</strong><p>${emptyMessage}</p></div>`;
-  return `<div class="welcome"><div><h1>${state.role==='admin'?'Billing records':'Bills & payments'}</h1><p>${state.role==='admin'?'Create and review invoice records.':'View invoices saved to your account.'}</p></div></div>${createForm}<div class="panel">${panelHead('Invoices','Amounts and statuses stored in the local database')}${table}</div><div class="notice" style="margin-top:16px">This is a local demonstration only. “Mark demo payment” does not charge money or connect to a payment provider.</div>`;
+  return `<div class="welcome"><div><h1>${state.role==='admin'?'Billing records':'Bills & payments'}</h1><p>${state.role==='admin'?'Create and review invoice records.':'View your invoices and choose a demo payment option.'}</p></div></div>${createForm}<div class="panel">${panelHead('Invoices','Amounts and statuses stored in the local database')}${table}</div><div class="notice" style="margin-top:16px">Demonstration only: these choices do not charge money, contact a bank, or connect to a payment provider. Do not enter card, UPI, or banking details.</div>`;
 }
 
 function renderStaff() {
@@ -663,8 +704,8 @@ async function uploadReport(event) {
     if (!response.ok) throw new Error(result.error || `Upload failed (${response.status}).`);
     await refreshBackendData();
     renderAll();
-    go('records');
-    toast('Report uploaded to your account.');
+    go('ai');
+    toast('Report uploaded. View it and its overview usage under Reports & AI.');
   } catch (err) {
     error.textContent = err.message || 'Could not upload the report.';
   } finally {
@@ -691,9 +732,14 @@ async function summarizeReport(id) {
   resultPanel.innerHTML='<div class="notice">Extracting selectable PDF text locally…</div>';
   try {
     const result=await apiRequest(`/api/reports/${Number(id)}/summary`,{method:'POST',body:'{}'});
-    resultPanel.innerHTML=`<div class="notice report-summary"><strong>Local document overview</strong><ul>${result.summary.map(sentence=>`<li>${escapeHtml(sentence)}</li>`).join('')}</ul><p>${escapeHtml(result.notice)} Read ${Number(result.pagesRead)} of ${Number(result.totalPages)} pages. No file was sent to an external AI service.</p></div>`;
+    await refreshBackendData();
+    renderAll();
+    go('ai');
+    const updatedPanel=document.getElementById('reportSummary');
+    updatedPanel.innerHTML=`<div class="notice report-summary" role="status"><strong>Local document overview</strong><ul>${result.summary.map(sentence=>`<li>${escapeHtml(sentence)}</li>`).join('')}</ul><p>${escapeHtml(result.notice)} Read ${Number(result.pagesRead)} of ${Number(result.totalPages)} pages. Overview usage for this report: ${Number(result.usageCount)}. No file was sent to an external AI service.</p></div>`;
   } catch(err) {
-    resultPanel.innerHTML=`<div class="notice" role="alert">${escapeHtml(err.message)}</div>`;
+    const currentPanel=document.getElementById('reportSummary');
+    if(currentPanel) currentPanel.innerHTML=`<div class="notice" role="alert">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -749,17 +795,56 @@ async function createPrescription(event) {
   const error = document.getElementById('prescriptionError');
   error.textContent = '';
   try {
-    await apiRequest('/api/admin/prescriptions', {
-      method: 'POST',
-      body: JSON.stringify(Object.fromEntries(new FormData(form)))
+    const data = Object.fromEntries(new FormData(form));
+    const id = Number(data.id);
+    delete data.id;
+    await apiRequest(id ? `/api/admin/prescriptions/${id}` : '/api/admin/prescriptions', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(data)
     });
     await refreshBackendData();
     renderAll();
     go('prescriptions');
-    toast('Prescription record saved.');
+    toast(id ? 'Prescription record updated for the patient.' : 'Prescription record saved.');
   } catch (err) {
     error.textContent = err.message;
   }
+}
+
+function editPrescription(id) {
+  const prescription = state.prescriptions.find(item => item.id === Number(id));
+  const form = document.getElementById('prescriptionForm');
+  if (!prescription || !form) {
+    toast('Prescription record is no longer available. Refresh and try again.');
+    return;
+  }
+  form.elements.id.value = String(prescription.id);
+  form.elements.userId.value = String(prescription.user_id);
+  form.elements.userId.disabled = true;
+  form.elements.doctorId.value = prescription.doctor_id == null ? '' : String(prescription.doctor_id);
+  form.elements.medication.value = prescription.medication;
+  form.elements.directions.value = prescription.directions;
+  form.elements.refills.value = String(prescription.refills);
+  form.elements.status.value = prescription.status;
+  document.getElementById('prescriptionFormTitle').textContent = `Update prescription for ${prescription.patient_name}`;
+  document.getElementById('prescriptionStatusField').classList.remove('hidden');
+  document.getElementById('prescriptionSubmit').textContent = 'Save updates';
+  document.getElementById('prescriptionCancel').classList.remove('hidden');
+  document.getElementById('prescriptionError').textContent = '';
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelPrescriptionEdit() {
+  const form = document.getElementById('prescriptionForm');
+  if (!form) return;
+  form.reset();
+  form.elements.id.value = '';
+  form.elements.userId.disabled = false;
+  document.getElementById('prescriptionFormTitle').textContent = 'Add prescription record';
+  document.getElementById('prescriptionStatusField').classList.add('hidden');
+  document.getElementById('prescriptionSubmit').textContent = 'Save prescription';
+  document.getElementById('prescriptionCancel').classList.add('hidden');
+  document.getElementById('prescriptionError').textContent = '';
 }
 
 async function createInvoice(event) {
@@ -786,11 +871,12 @@ async function createInvoice(event) {
 
 async function payInvoiceDemo(id) {
   try {
-    await apiRequest(`/api/invoices/${Number(id)}/pay-demo`, { method: 'POST', body: '{}' });
+    const paymentMethod = document.getElementById(`paymentMethod-${Number(id)}`)?.value || '';
+    await apiRequest(`/api/invoices/${Number(id)}/pay-demo`, { method: 'POST', body: JSON.stringify({ paymentMethod }) });
     await refreshBackendData();
     renderAll();
     go('billing');
-    toast('Demo payment status saved. No money was charged.');
+    toast('Demo payment choice saved. No money was charged.');
   } catch (err) {
     toast(err.message);
   }
