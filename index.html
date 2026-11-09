@@ -48,7 +48,7 @@
     <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
     <article class="feature"><div class="feature-icon">⌁</div><h3>Clear, connected insights</h3><p>Present useful summaries and status indicators in an accessible, responsive dashboard.</p></article>
   </div></div></section>
-  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a frontend demonstration for a hackathon. The data is sample data; authentication, storage, notifications, and medical integrations need a secure backend before real-world use.</div></div></section>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Account registration, sessions, doctor listings, appointments, and profile updates use a local SQLite backend. Health records, prescriptions, billing, notifications, and several administration tools are not connected. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
   <footer class="footer">© 2026 CareSphere Health Platform · Designed for a more connected care experience</footer>
 </div>
 
@@ -61,7 +61,7 @@
     <form id="loginForm" onsubmit="login(event)">
       <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required autocomplete="username"></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" placeholder="Enter your password" required autocomplete="current-password"></div>
-      <div class="form-row"><label style="display:flex;align-items:center;gap:7px"><input type="checkbox" style="accent-color:var(--green)"> Remember me</label><a href="#" onclick="event.preventDefault();toast('For this demo, use the sample login details below.')">Forgot password?</a></div>
+      <div class="form-row"><span>Secure session</span><button class="link-btn" type="button" disabled title="Password reset is not connected">Password reset unavailable</button></div>
       <button class="btn btn-primary full" type="submit">Sign in securely →</button>
       <div id="loginError" class="error"></div>
     </form>
@@ -69,14 +69,29 @@
   </div>
 </div>
 
+<div id="bookingOverlay" class="booking-overlay hidden" onclick="if(event.target===this)closeBooking()" aria-hidden="true">
+  <section class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="bookingTitle">
+    <button class="close" type="button" onclick="closeBooking()" aria-label="Close appointment form">×</button>
+    <h2 id="bookingTitle">Book an appointment</h2>
+    <p class="booking-subtitle">Choose a doctor and a future date and time for your visit.</p>
+    <form id="bookingForm" onsubmit="submitAppointment(event)">
+      <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required></select></div>
+      <div class="field"><label for="bookingDate">Date and time</label><input id="bookingDate" name="appointmentAt" type="datetime-local" required></div>
+      <div class="field"><label for="bookingReason">Reason for visit</label><input id="bookingReason" name="reason" type="text" maxlength="120" value="Consultation" placeholder="Consultation"></div>
+      <div id="bookingError" class="error" role="alert"></div>
+      <div class="booking-actions"><button class="btn btn-outline" type="button" onclick="closeBooking()">Cancel</button><button id="bookingSubmit" class="btn btn-primary" type="submit">Request appointment</button></div>
+    </form>
+  </section>
+</div>
+
 <div id="app" class="app hidden">
   <aside id="sidebar" class="sidebar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
     <div class="nav-label">Workspace</div><nav id="navItems"></nav>
-    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Find help using the support centre or contact your care team.</p><button class="btn btn-light btn-sm" onclick="toast('Support centre: this demo has no live support connection.')">Visit support →</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
+    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Support services are not connected in this prototype.</p><button class="btn btn-light btn-sm" type="button" disabled>Support unavailable</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
   </aside>
   <main class="app-main">
-    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" onclick="toast('You are all caught up!')" aria-label="Notifications">♧<span class="notification-dot"></span></button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Vedant Sharma</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
+    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" type="button" disabled aria-label="Notifications are not connected" title="Notifications are not connected">♧</button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Patient</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
     <div class="content">
       <section id="page-dashboard" class="page-section active"></section>
       <section id="page-appointments" class="page-section"></section>

@@ -67,6 +67,7 @@ function renderAll(){document.getElementById('page-dashboard').innerHTML=state.r
 // --- CareSphere backend integration (Express + SQLite) ---
 let authMode = 'login';
 let apiDoctors = [];
+let apiPatients = [];
 async function apiRequest(url, options={}) {
   const response = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
   let data = {};
@@ -148,19 +149,31 @@ async function enterDashboard() {
   document.getElementById('profileRole').textContent = state.role === 'admin' ? 'Administrator' : 'Patient account';
   document.getElementById('avatarInitials').textContent = state.name.split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase();
   try {
-    const [appointmentData, doctorData] = await Promise.all([
-      apiRequest('/api/appointments'), apiRequest('/api/doctors')
-    ]);
-    state.appointments = appointmentData.appointments.map(a => ({
-      id: a.id, doctorId: a.doctor_id, name: state.role === 'admin' ? (a.patient_name || 'Patient') : a.doctor_name,
-      dept: a.specialty, date: formatAppointmentDate(a.appointment_at), status: a.status,
-      type: a.reason || 'Consultation', patientEmail: a.patient_email
-    }));
-    apiDoctors = doctorData.doctors;
+    await refreshBackendData();
     buildNav(); renderAll(); go('appointments');
   } catch (err) {
     toast('Connected login, but could not load dashboard data: ' + err.message);
     buildNav(); renderAll(); go('dashboard');
+  }
+  async function refreshBackendData() {
+    const requests = [
+      apiRequest('/api/appointments'),
+      apiRequest('/api/doctors'),
+      state.role === 'admin' ? apiRequest('/api/admin/patients') : Promise.resolve({ patients: [] })
+    ];
+    const [appointmentData, doctorData, patientData] = await Promise.all(requests);
+    state.appointments = appointmentData.appointments.map(a => ({
+      id: a.id,
+      doctorId: a.doctor_id,
+      name: state.role === 'admin' ? (a.patient_name || 'Patient') : a.doctor_name,
+      dept: a.specialty,
+      date: formatAppointmentDate(a.appointment_at),
+      status: a.status,
+      type: a.reason || 'Consultation',
+      patientEmail: a.patient_email
+    }));
+    apiDoctors = doctorData.doctors;
+    apiPatients = patientData.patients;
   }
 }
 function formatAppointmentDate(value) {
@@ -198,29 +211,100 @@ function filterDepartment(dep) {
   document.getElementById('doctorGrid').innerHTML = backendDoctorCards(list);
 }
 async function bookAppointment(doctorId=0) {
-  if (state.role === 'admin') { toast('Appointment requests are created by patient accounts.'); return; }
-  if (!apiDoctors.length) { toast('Doctor list is not loaded. Refresh and try again.'); return; }
-  let chosen = apiDoctors.find(d=>d.id===Number(doctorId));
-  if (!chosen) {
-    const menu = apiDoctors.map((d,i)=>`${i+1}. ${d.name} — ${d.specialty}`).join('\n');
-    const answer = prompt('Choose a doctor by number:\n'+menu);
-    if (answer === null) return;
-    const n = Number(answer);
-    if (!Number.isInteger(n) || n<1 || n>apiDoctors.length) { toast('Please enter a valid doctor number.'); return; }
-    chosen = apiDoctors[n-1];
+  if (state.role === 'admin') {
+    toast('Appointment requests are created by patient accounts.');
+    return;
   }
-  const defaultDate = new Date(Date.now()+7*24*60*60*1000);
-  defaultDate.setMinutes(0,0,0);
-  const localValue = new Date(defaultDate.getTime()-defaultDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  const dateValue = prompt('Enter appointment date and time (YYYY-MM-DDTHH:mm). Example: '+localValue, localValue);
-  if (!dateValue) return;
-  const reason = prompt('Reason for visit (optional):','Consultation') || 'Consultation';
+  const error = document.getElementById('bookingError');
+  error.textContent = '';
   try {
-    await apiRequest('/api/appointments',{method:'POST',body:JSON.stringify({doctorId:chosen.id,appointmentAt:dateValue,reason})});
-    const result = await apiRequest('/api/appointments');
-    state.appointments = result.appointments.map(a=>({id:a.id,doctorId:a.doctor_id,name:a.doctor_name,dept:a.specialty,date:formatAppointmentDate(a.appointment_at),status:a.status,type:a.reason}));
-    renderAll(); go('appointments'); toast('Appointment request saved to the database.');
-  } catch(err) { toast(err.message); }
+    if (!apiDoctors.length) {
+      const result = await apiRequest('/api/doctors');
+      apiDoctors = result.doctors;
+    }
+    if (!apiDoctors.length) {
+      error.textContent = 'No doctors are currently available. Please try again later.';
+      document.getElementById('bookingOverlay').classList.remove('hidden');
+      document.getElementById('bookingOverlay').setAttribute('aria-hidden', 'false');
+      return;
+    }
+    const select = document.getElementById('bookingDoctor');
+    select.innerHTML = '<option value="">Choose a doctor</option>' + apiDoctors.map(doctor =>
+      `<option value="${Number(doctor.id)}">${escapeHtml(doctor.name)} — ${escapeHtml(doctor.specialty)}</option>`
+    ).join('');
+    if (doctorId) select.value = String(doctorId);
+    const now = new Date();
+    const minDate = new Date(now.getTime() + 5 * 60 * 1000);
+    const defaultDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    defaultDate.setMinutes(0, 0, 0);
+    document.getElementById('bookingDate').min = toLocalDateTimeValue(minDate);
+    document.getElementById('bookingDate').value = toLocalDateTimeValue(defaultDate);
+    document.getElementById('bookingReason').value = 'Consultation';
+    document.getElementById('bookingOverlay').classList.remove('hidden');
+    document.getElementById('bookingOverlay').setAttribute('aria-hidden', 'false');
+    select.focus();
+  } catch (err) {
+    error.textContent = err.message || 'Could not load doctors. Please try again.';
+    document.getElementById('bookingOverlay').classList.remove('hidden');
+    document.getElementById('bookingOverlay').setAttribute('aria-hidden', 'false');
+  }
+}
+
+function toLocalDateTimeValue(date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function closeBooking() {
+  const overlay = document.getElementById('bookingOverlay');
+  overlay.classList.add('hidden');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.getElementById('bookingError').textContent = '';
+  document.getElementById('bookingForm').reset();
+}
+
+async function submitAppointment(event) {
+  event.preventDefault();
+  const form = document.getElementById('bookingForm');
+  const submit = document.getElementById('bookingSubmit');
+  const error = document.getElementById('bookingError');
+  const doctorId = Number(form.elements.doctorId.value);
+  const appointmentAt = form.elements.appointmentAt.value;
+  const reason = form.elements.reason.value.trim() || 'Consultation';
+  error.textContent = '';
+  submit.disabled = true;
+  try {
+    const result = await apiRequest('/api/appointments', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, appointmentAt, reason })
+    });
+    closeBooking();
+    try {
+      await refreshBackendData();
+    } catch (refreshError) {
+      const appointment = result.appointment;
+      state.appointments.push({
+        id: appointment.id,
+        doctorId: appointment.doctor_id,
+        name: appointment.doctor_name,
+        dept: appointment.specialty,
+        date: formatAppointmentDate(appointment.appointment_at),
+        status: appointment.status,
+        type: appointment.reason || 'Consultation'
+      });
+      renderAll();
+      go('appointments');
+      toast(`Appointment saved, but the list could not refresh: ${refreshError.message}`);
+      return;
+    }
+    renderAll();
+    go('appointments');
+    toast('Appointment request saved to the database.');
+  } catch (err) {
+    error.textContent = err.message || 'Could not save your appointment. Please try again.';
+  } finally {
+    submit.disabled = false;
+  }
 }
 async function saveProfile(e) {
   e.preventDefault();
@@ -250,9 +334,168 @@ restoreSession();
 // Keep the overview honest: show database-backed appointment information, not seeded demo visits.
 function userDashboard() {
   const count = state.appointments.length;
-  const upcoming = state.appointments[0];
-  return `<div class="welcome"><div><h1>Good day, ${state.name.split(' ')[0]} 👋</h1><p>Your CareSphere account overview.</p></div><div class="welcome-actions"><button class="btn btn-outline" onclick="go('doctors')">Find a doctor</button><button class="btn btn-primary" onclick="bookAppointment()">＋ Book appointment</button></div></div>
+  return `<div class="welcome"><div><h1>Good day, ${escapeHtml(state.name.split(' ')[0])} 👋</h1><p>Your CareSphere account overview.</p></div><div class="welcome-actions"><button class="btn btn-outline" onclick="go('doctors')">Find a doctor</button><button class="btn btn-primary" onclick="bookAppointment()">＋ Book appointment</button></div></div>
   <div class="stats">${stat('Saved appointments',String(count),'▦','Stored in your account')}${stat('Available doctors',String(apiDoctors.length),'✚','From the database')}${stat('Health records','Not connected','▤','Backend integration pending')}${stat('Prescriptions','Not connected','♧','Backend integration pending')}</div>
   <div class="panel">${panelHead('Your appointments','Information loaded from the CareSphere database')}${count ? appointmentsTable(state.appointments.slice(0,5),false) : '<div class="empty-state"><strong>No appointments yet</strong><p>Choose Find a doctor to create your first appointment request.</p></div>'}<button class="btn btn-light" style="margin-top:12px" onclick="go(\'appointments\')">View all appointments →</button></div>
   <div class="notice" style="margin-top:16px">Health records, prescriptions, billing, and notifications are not yet connected to a real database in this prototype.</div>`;
+}
+
+let appointmentSearch = '';
+let appointmentStatus = 'all';
+let doctorSearch = '';
+let doctorDepartment = 'all';
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
+function unavailablePage(title, message, action) {
+  return `<div class="welcome"><div><h1>${title}</h1><p>${message}</p></div></div><div class="panel"><div class="empty-state"><strong>This feature is not connected</strong><p>It is unavailable until a backend endpoint and database support are added.</p><button class="btn btn-light" type="button" disabled>${action}</button></div></div>`;
+}
+
+function renderAll() {
+  document.getElementById('page-dashboard').innerHTML = state.role === 'admin' ? adminDashboard() : userDashboard();
+  document.getElementById('page-appointments').innerHTML = renderAppointments();
+  document.getElementById('page-doctors').innerHTML = renderDoctors();
+  document.getElementById('page-records').innerHTML = renderRecords();
+  document.getElementById('page-prescriptions').innerHTML = renderPrescriptions();
+  document.getElementById('page-billing').innerHTML = renderBilling();
+  document.getElementById('page-patients').innerHTML = patientDirectory();
+  document.getElementById('page-staff').innerHTML = renderStaff();
+  document.getElementById('page-reports').innerHTML = renderReports();
+  document.getElementById('page-settings').innerHTML = renderSettings();
+}
+
+function adminDashboard() {
+  const pending = state.appointments.filter(appointment => appointment.status === 'Pending').length;
+  return `<div class="welcome"><div><h1>Hospital overview</h1><p>Live totals from the CareSphere database.</p></div></div>
+    <div class="stats">${stat('Patients',String(apiPatients.length),'♙','Registered patient accounts')}${stat('Appointments',String(state.appointments.length),'▦','Saved appointment requests')}${stat('Pending requests',String(pending),'◷','Awaiting review')}${stat('Available doctors',String(apiDoctors.length),'✚','From the doctor directory')}</div>
+    <div class="panel">${panelHead('Appointments','Manage status for saved appointment requests')}${state.appointments.length ? appointmentsTable(state.appointments.slice(0,5),true) : '<div class="empty-state"><strong>No appointments yet</strong></div>'}<button class="btn btn-light" style="margin-top:12px" onclick="go('appointments')">View all appointments →</button></div>
+    <div class="panel" style="margin-top:16px">${panelHead('Patient directory','Registered patient accounts')}<p>${apiPatients.length} patient account${apiPatients.length === 1 ? '' : 's'} in the database.</p><button class="btn btn-light" onclick="go('patients')">Open patient directory →</button></div>`;
+}
+
+function appointmentsTable(rows, admin=false) {
+  return `<div class="table-wrap"><table><thead><tr><th>${admin?'Patient':'Doctor'}</th><th>${admin?'Department / clinician':'Specialty'}</th><th>Date & time</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(appointment => `<tr data-status="${escapeHtml(appointment.status.toLowerCase())}"><td><div class="person-cell"><div class="patient-avatar">${escapeHtml((appointment.name.match(/\b\w/g)||[]).slice(0,2).join(''))}</div><div><strong>${escapeHtml(appointment.name)}</strong><small>${escapeHtml(appointment.type || 'Consultation')}</small></div></div></td><td>${escapeHtml(appointment.dept)}</td><td>${escapeHtml(appointment.date)}</td><td><span class="status ${escapeHtml(appointment.status.toLowerCase())}">${escapeHtml(appointment.status)}</span></td><td><button class="link-btn" onclick="${admin?`appointmentAction(${Number(appointment.id)})`:`appointmentAction(${Number(appointment.id)},false)`}">${admin?'Update status':'View details'}</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+
+async function appointmentAction(id, admin=state.role === 'admin') {
+  const appointment = state.appointments.find(item => item.id === Number(id));
+  if (!appointment) {
+    toast('Appointment is no longer available. Refresh and try again.');
+    return;
+  }
+  if (!admin) {
+    toast(`${appointment.name} · ${appointment.date} · ${appointment.status}`);
+    return;
+  }
+  const status = prompt(`Current status: ${appointment.status}\nEnter Pending, Confirmed, Completed, or Cancelled:`, appointment.status);
+  if (status === null) return;
+  const normalizedStatus = ['Pending','Confirmed','Completed','Cancelled'].find(value => value.toLowerCase() === status.trim().toLowerCase());
+  if (!normalizedStatus) {
+    toast('Choose Pending, Confirmed, Completed, or Cancelled.');
+    return;
+  }
+  try {
+    await apiRequest(`/api/appointments/${Number(id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: normalizedStatus })
+    });
+    await refreshBackendData();
+    renderAll();
+    go('appointments');
+    toast('Appointment status saved.');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+function renderAppointments() {
+  const admin = state.role === 'admin';
+  const rows = state.appointments || [];
+  appointmentSearch = '';
+  appointmentStatus = 'all';
+  return `<div class="welcome"><div><h1>${admin?'Appointment management':'My appointments'}</h1><p>${admin?'Review and update appointments saved in the database.':'Your appointment requests saved to your CareSphere account.'}</p></div>${admin?'':'<button class="btn btn-primary" onclick="bookAppointment()">＋ Book appointment</button>'}</div><div class="panel"><div class="searchbar"><input placeholder="Search by ${admin?'patient or doctor':'doctor or specialty'}…" oninput="filterTable(this.value)"><select onchange="filterStatus(this.value)"><option value="all">All statuses</option><option>Confirmed</option><option>Pending</option><option>Completed</option><option>Cancelled</option></select></div><div id="appointmentTable">${rows.length ? appointmentsTable(rows,admin) : '<div class="empty-state"><strong>No appointments yet</strong><p>Book an appointment and it will appear here after it is saved.</p></div>'}</div></div>`;
+}
+
+function applyAppointmentFilters() {
+  document.querySelectorAll('#appointmentTable tbody tr').forEach(row => {
+    const matchesText = row.innerText.toLowerCase().includes(appointmentSearch.toLowerCase());
+    const matchesStatus = appointmentStatus === 'all' || row.dataset.status === appointmentStatus.toLowerCase();
+    row.style.display = matchesText && matchesStatus ? '' : 'none';
+  });
+  document.querySelectorAll('#patientRows tr').forEach(row => {
+    row.style.display = row.innerText.toLowerCase().includes(appointmentSearch.toLowerCase()) ? '' : 'none';
+  });
+}
+
+function filterTable(query) {
+  appointmentSearch = query;
+  applyAppointmentFilters();
+}
+
+function filterStatus(status) {
+  appointmentStatus = status;
+  applyAppointmentFilters();
+}
+
+function renderDoctors() {
+  doctorSearch = '';
+  doctorDepartment = 'all';
+  const specialties = [...new Set(apiDoctors.map(doctor => doctor.specialty))];
+  return `<div class="welcome"><div><h1>${state.role==='admin'?'Doctors & departments':'Find your doctor'}</h1><p>${state.role==='admin'?'Doctor listings from the database.':'Choose a specialist for your next visit.'}</p></div></div><div class="searchbar"><input placeholder="Search doctors or specialties…" oninput="filterDoctors(this.value)"><select onchange="filterDepartment(this.value)"><option value="all">All specialties</option>${specialties.map(specialty=>`<option value="${escapeHtml(specialty)}">${escapeHtml(specialty)}</option>`).join('')}</select></div><div id="doctorGrid" class="doctor-card-grid">${backendDoctorCards(apiDoctors)}</div>`;
+}
+
+function backendDoctorCards(items) {
+  return items.map(doctor=>`<article class="doctor-card"><div class="doctor-photo">✚</div><h3>${escapeHtml(doctor.name)}</h3><p>${escapeHtml(doctor.specialty)}</p><div class="doctor-meta">✧ &nbsp; ${escapeHtml(doctor.experience || 'Care specialist')}</div>${state.role==='admin'?'<button class="btn btn-light full" type="button" disabled title="Doctor management is not connected">Management unavailable</button>':`<button class="btn btn-primary full" style="margin-top:10px" onclick="bookAppointment(${Number(doctor.id)})">Book appointment →</button>`}</article>`).join('') || '<div class="empty-state">No doctors found.</div>';
+}
+
+function filterDoctors(query) {
+  doctorSearch = query;
+  const filtered = apiDoctors.filter(doctor =>
+    (doctor.name+' '+doctor.specialty).toLowerCase().includes(doctorSearch.toLowerCase()) &&
+    (doctorDepartment === 'all' || doctor.specialty === doctorDepartment)
+  );
+  document.getElementById('doctorGrid').innerHTML = backendDoctorCards(filtered);
+}
+
+function filterDepartment(department) {
+  doctorDepartment = department;
+  filterDoctors(doctorSearch);
+}
+
+function patientDirectory() {
+  if (state.role !== 'admin') return '';
+  const rows = apiPatients.map(patient => `<tr><td><div class="person-cell"><div class="patient-avatar">${escapeHtml(patient.name.split(/\s+/).map(part=>part[0]).slice(0,2).join(''))}</div><div><strong>${escapeHtml(patient.name)}</strong><small>${escapeHtml(patient.email)}</small></div></div></td><td>${Number(patient.id)}</td><td>${escapeHtml(patient.created_at)}</td><td><span class="status active">Registered</span></td></tr>`).join('');
+  return `<div class="panel"><div class="searchbar"><input placeholder="Search patient name or email…" oninput="filterTable(this.value)"></div><div class="table-wrap"><table><thead><tr><th>Patient</th><th>Patient ID</th><th>Registered</th><th>Status</th></tr></thead><tbody id="patientRows">${rows}</tbody></table></div>${rows?'':'<div class="empty-state"><strong>No patient accounts yet</strong></div>'}</div>`;
+}
+
+function addPatient() {
+  toast('Patient creation is unavailable because the backend does not provide a patient-registration endpoint.');
+}
+
+function renderRecords() {
+  return unavailablePage('Health records','View or upload medical records. No records backend is available yet.','Upload document');
+}
+
+function renderPrescriptions() {
+  return unavailablePage('Prescriptions','Prescription data is not available from the backend yet.','Download list');
+}
+
+function renderBilling() {
+  return unavailablePage('Bills & payments','Billing and payment services are not connected.','Pay now');
+}
+
+function renderStaff() {
+  return unavailablePage('Staff management','Staff onboarding and management are not connected.','Invite staff');
+}
+
+function renderReports() {
+  return unavailablePage('Reports & analytics','Reporting data and exports are not connected.','Export report');
+}
+
+function renderSettings() {
+  if (state.role === 'admin') return unavailablePage('System settings','Administrator settings are not connected to the backend.','Save settings');
+  return `<div class="welcome"><div><h1>My profile</h1><p>Update your account information in the CareSphere database.</p></div></div><div class="panel" style="max-width:720px">${panelHead('Account information','Changes are saved to your account')}<form onsubmit="saveProfile(event)"><div class="field"><label for="profileFullName">Full name</label><input id="profileFullName" type="text" minlength="2" maxlength="80" value="${escapeHtml(state.name)}" required></div><div class="field"><label for="profileEmail">Email address</label><input id="profileEmail" type="email" maxlength="254" value="${escapeHtml(state.email)}" required></div><button class="btn btn-primary" type="submit">Save profile</button></form></div>`;
 }

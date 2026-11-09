@@ -1,61 +1,76 @@
-# CareSphere — frontend + Node.js + SQLite
+# CareSphere
 
-This version keeps the existing HTML/CSS/JavaScript design and adds an Express backend with an SQLite database.
+CareSphere is a local healthcare-management prototype built with HTML, CSS, vanilla JavaScript, Node.js, Express, and SQLite. The frontend and API are served from the same origin so browser sessions and backend requests work together.
 
 ## Requirements
-- Node.js 20 or newer (Node 24 is suitable)
-- VS Code
 
-## 1. Open the project
-Extract the ZIP, then in VS Code choose **File → Open Folder** and select `caresphere-frontend`.
+- Node.js 20 or newer
+- npm
 
-## 2. Configure environment
-In the VS Code terminal, run:
+## Run locally
 
-```powershell
-Copy-Item .env.example .env
-```
-
-Open `.env`. Replace `SESSION_SECRET` with a long random string. For patient testing, leave `ADMIN_EMAIL` and `ADMIN_PASSWORD` blank. To enable the administrator role, set both to an email and a strong `ADMIN_PASSWORD` of at least 12 characters. This account is created/updated at server startup. Never share `.env` or commit it to Git.
-
-## 3. Install dependencies
+Run these commands from the project folder:
 
 ```powershell
 npm install
-```
-
-If `npm` is not recognized, install the current Node.js LTS release from https://nodejs.org, then close and reopen VS Code.
-
-## 4. Start the backend
-
-```powershell
+Copy-Item .env.example .env
 npm start
 ```
 
-Open **http://localhost:3000** in Chrome/Edge. Do not double-click `index.html`; use the localhost URL so API calls and sessions work.
+Open [http://localhost:3000](http://localhost:3000) and leave the terminal running. Do not open `index.html` directly or use a separate static server such as VS Code Live Server: the app's API requests and sign-in session need to use the Express server.
 
-Keep the terminal running while using the website. Stop the server with `Ctrl+C`.
+If port 3000 is already in use, set a different `PORT` in `.env`, restart the server, and open that port in your browser.
 
-## 5. Test it
-1. Visit `http://localhost:3000/api/health`. Expected JSON includes `"status":"ok"` and `"database":"connected"`.
-2. Open the website, click sign in, and choose **Create an account**.
-3. Register using a test email address you control and a password of at least 8 characters.
-4. Go to **Find a doctor** and book an appointment. Choose a doctor and a future date/time when prompted.
-5. Open **My appointments**, refresh the page, or sign out and sign back in. The appointment should remain because it is stored in `backend/data/caresphere.sqlite`.
-6. To test login, sign out and sign back in with the same credentials. Incorrect credentials should be rejected.
+### Environment settings
 
-## API endpoints
+Edit `.env` before starting the server:
+
+- Set `SESSION_SECRET` to a long, random value.
+- To create an administrator account, set both `ADMIN_EMAIL` and `ADMIN_PASSWORD`. The password must be at least 12 characters. Leave both blank to use patient accounts only.
+
+Keep `.env` private; it is excluded from Git. Never use real patient information with this prototype.
+
+## Try the app
+
+1. Check that [http://localhost:3000/api/health](http://localhost:3000/api/health) returns `"status":"ok"` and `"database":"connected"`.
+2. Select **Get started**, choose **Create an account**, and register with a test email and a password of at least 8 characters.
+3. Use **Find a doctor** to submit an appointment request. The appointment is saved in SQLite and appears under **My appointments**.
+4. Sign out and sign in again to verify that the account and appointment persist.
+5. To use the administrator portal, sign in with the credentials configured in `.env`.
+
+## Project layout
+
+```text
+.
+├── backend/
+│   ├── server.js
+│   └── data/              # SQLite database created at runtime
+├── css/
+│   └── styles.css
+├── js/
+│   └── app.js
+├── index.html
+├── .env.example
+├── package.json
+└── README.md
+```
+
+## Backend API
+
 - `GET /api/health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 - `GET /api/doctors` (signed in)
-- `GET /api/appointments` (signed in; admins can see all)
-- `POST /api/appointments` (patient)
-- `PATCH /api/appointments/:id/status` (admin)
+- `GET /api/appointments` (signed in; administrators can see all appointments)
+- `POST /api/appointments` (patient account)
+- `PATCH /api/appointments/:id/status` (administrator)
 - `PATCH /api/profile` (signed in)
-- `GET /api/admin/patients` (admin)
+- `GET /api/admin/patients` (administrator)
 
-## Important scope and safety
-Registration, password hashing, server-side sessions, doctor listings, appointment requests, appointment status storage, and profile-name updates use the backend/database. Existing overview metrics, prescriptions, health-records, billing, some administrator screens/actions and notification widgets are still illustrative frontend content and are **not** connected to real hospital systems. Do not use real patient or medical data. This is a local learning prototype, not a production healthcare service. Before deployment, use a persistent production session store, HTTPS, CSRF protection as appropriate, audit logs, backups, strict role-based access, privacy review, and professional security testing.
+Registration, password hashing, session-based authentication, doctor listings, appointment requests, and profile updates use the backend and SQLite database.
+
+## Prototype limitations
+
+Health records, prescriptions, billing, reports, staff management, and several administrator dashboard actions are still demonstration screens; they are not connected to persistent backend features. Do not use this prototype for real medical records, clinical decisions, or production healthcare services. A production deployment would require, among other things, a persistent session store, HTTPS, appropriate CSRF protections, access-control and privacy reviews, audit logging, backups, and professional security testing.
