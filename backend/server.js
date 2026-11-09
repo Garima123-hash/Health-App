@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS prescriptions (
  status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active','Completed','Stopped')),
  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS pending_prescriptions (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+ patient_name TEXT NOT NULL,
+ patient_email TEXT NOT NULL COLLATE NOCASE,
+ doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+ medication TEXT NOT NULL,
+ directions TEXT NOT NULL,
+ refills INTEGER NOT NULL DEFAULT 0 CHECK(refills BETWEEN 0 AND 20),
+ status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active','Completed','Stopped')),
+ created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS invoices (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -94,6 +106,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE INDEX IF NOT EXISTS appointments_user_date ON appointments(user_id, appointment_at);
 CREATE INDEX IF NOT EXISTS reports_user_date ON reports(user_id, created_at);
 CREATE INDEX IF NOT EXISTS prescriptions_user_date ON prescriptions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS pending_prescriptions_hospital_email ON pending_prescriptions(hospital_id,patient_email);
 CREATE INDEX IF NOT EXISTS invoices_user_date ON invoices(user_id, created_at);
 CREATE TABLE IF NOT EXISTS hospital_admins (
  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -279,10 +292,25 @@ app.post('/api/auth/register', (req, res) => {
  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 120)) return res.status(400).json({ error: 'Age must be a whole number between 0 and 120.' });
  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
  const hash = bcrypt.hashSync(password, 12);
- const result = db.prepare("INSERT INTO users(name,email,password_hash,role,age,hospital_id) VALUES(?,?,?,'patient',?,?)").run(name,email,hash,age,hospitalId);
- const user = publicUser(db.prepare('SELECT u.id,u.name,u.email,u.role,u.age,u.hospital_id,h.name AS hospital_name FROM users u JOIN hospitals h ON h.id=u.hospital_id WHERE u.id=?').get(result.lastInsertRowid));
+ const register = db.transaction(() => {
+   const result = db.prepare("INSERT INTO users(name,email,password_hash,role,age,hospital_id) VALUES(?,?,?,'patient',?,?)").run(name,email,hash,age,hospitalId);
+   const userId = Number(result.lastInsertRowid);
+   const pendingPrescriptions = db.prepare(`SELECT id,doctor_id,medication,directions,refills,status,created_at
+     FROM pending_prescriptions WHERE hospital_id=? AND patient_email=? COLLATE NOCASE`).all(hospitalId,email);
+   const claimPrescription = db.prepare(`INSERT INTO prescriptions(user_id,doctor_id,medication,directions,refills,status,created_at)
+     VALUES(?,?,?,?,?,?,?)`);
+   for (const prescription of pendingPrescriptions) {
+     claimPrescription.run(userId,prescription.doctor_id,prescription.medication,prescription.directions,prescription.refills,prescription.status,prescription.created_at);
+   }
+   if (pendingPrescriptions.length) {
+     db.prepare('DELETE FROM pending_prescriptions WHERE hospital_id=? AND patient_email=? COLLATE NOCASE').run(hospitalId,email);
+   }
+   return { userId, claimedPrescriptions: pendingPrescriptions.length };
+ });
+ const registration = register();
+ const user = publicUser(db.prepare('SELECT u.id,u.name,u.email,u.role,u.age,u.hospital_id,h.name AS hospital_name FROM users u JOIN hospitals h ON h.id=u.hospital_id WHERE u.id=?').get(registration.userId));
  req.session.user = user;
- res.status(201).json({ user });
+ res.status(201).json({ user, claimedPrescriptions: registration.claimedPrescriptions });
 });
 app.post('/api/auth/login', (req, res) => {
  const email = cleanText(req.body.email, 254).toLowerCase();
@@ -525,18 +553,35 @@ app.get('/api/prescriptions', requireAuth, (req,res) => {
  const prescriptions = db.prepare(`SELECT p.id,p.user_id,p.doctor_id,p.medication,p.directions,p.refills,p.status,p.created_at,u.name AS patient_name,d.name AS doctor_name
    FROM prescriptions p JOIN users u ON u.id=p.user_id LEFT JOIN doctors d ON d.id=p.doctor_id
    WHERE ${admin ? 'u.hospital_id=?' : 'p.user_id=?'} ORDER BY p.created_at DESC`).all(req.session.user.role==='admin'?req.session.user.hospital_id:req.session.user.id);
- res.json({ prescriptions });
+ const pendingPrescriptions = admin ? db.prepare(`SELECT p.id,p.patient_name,p.patient_email,p.doctor_id,p.medication,p.directions,p.refills,p.status,p.created_at,d.name AS doctor_name
+   FROM pending_prescriptions p LEFT JOIN doctors d ON d.id=p.doctor_id
+   WHERE p.hospital_id=? ORDER BY p.created_at DESC`).all(req.session.user.hospital_id) : [];
+ res.json({ prescriptions, pendingPrescriptions });
 });
 app.post('/api/admin/prescriptions', requireAdmin, (req,res) => {
+ const patientType = req.body.patientType;
  const userId = Number(req.body.userId);
+ const patientName = cleanText(req.body.patientName,80);
+ const patientEmail = cleanText(req.body.patientEmail,254).toLowerCase();
  const doctorId = req.body.doctorId === '' || req.body.doctorId == null ? null : Number(req.body.doctorId);
  const medication = cleanText(req.body.medication,120);
  const directions = cleanText(req.body.directions,500);
  const refills = Number(req.body.refills);
- if (!Number.isInteger(userId) || !db.prepare("SELECT id FROM users WHERE id=? AND role='patient' AND hospital_id=?").get(userId,req.session.user.hospital_id)) return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
+ if (!['registered','new'].includes(patientType)) return res.status(400).json({ error: 'Choose an existing patient or enter details for a new patient.' });
+ if (patientType === 'registered' && (!Number.isInteger(userId) || !db.prepare("SELECT id FROM users WHERE id=? AND role='patient' AND hospital_id=?").get(userId,req.session.user.hospital_id))) return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
+ if (patientType === 'new') {
+   if (patientName.length < 2) return res.status(400).json({ error: 'Enter the new patient’s full name.' });
+   if (!validEmail(patientEmail)) return res.status(400).json({ error: 'Enter a valid email address for the new patient.' });
+   if (db.prepare('SELECT id,hospital_id FROM users WHERE email=? COLLATE NOCASE').get(patientEmail)) return res.status(409).json({ error: 'This email already has a CareSphere account. Choose that patient from the existing-patient option.' });
+ }
  if (doctorId !== null && !db.prepare('SELECT id FROM doctors WHERE id=? AND hospital_id=?').get(doctorId,req.session.user.hospital_id)) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
  if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
  if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
+ if (patientType === 'new') {
+   const result = db.prepare(`INSERT INTO pending_prescriptions(hospital_id,patient_name,patient_email,doctor_id,medication,directions,refills)
+     VALUES(?,?,?,?,?,?,?)`).run(req.session.user.hospital_id,patientName,patientEmail,doctorId,medication,directions,refills);
+   return res.status(201).json({ pendingPrescription: db.prepare('SELECT id,hospital_id,patient_name,patient_email,doctor_id,medication,directions,refills,status,created_at FROM pending_prescriptions WHERE id=?').get(result.lastInsertRowid) });
+ }
  const result = db.prepare('INSERT INTO prescriptions(user_id,doctor_id,medication,directions,refills) VALUES(?,?,?,?,?)').run(userId,doctorId,medication,directions,refills);
  res.status(201).json({ prescription: db.prepare('SELECT id,user_id,medication,directions,refills,status,created_at FROM prescriptions WHERE id=?').get(result.lastInsertRowid) });
 });

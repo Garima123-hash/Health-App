@@ -80,15 +80,15 @@ The starter directory includes CareSphere Community Hospital, CareSphere North C
 - `GET /api/admin/patients` (administrator)
 - `GET /api/reports`, `POST /api/reports`, `GET /api/reports/:id/download`, `POST /api/reports/:id/summary`, `PATCH /api/reports/:id/share`, `DELETE /api/reports/:id` (patients; own files only)
 - `GET /api/admin/reports` (administrator; only patient-shared reports at the active hospital)
-- `GET /api/prescriptions` (signed in; administrators can see all)
-- `POST /api/admin/prescriptions`, `PATCH /api/admin/prescriptions/:id` (administrator, active-hospital patients only)
+- `GET /api/prescriptions` (signed in; administrators can see saved and pending records for the active hospital)
+- `POST /api/admin/prescriptions`, `PATCH /api/admin/prescriptions/:id` (administrator; create for an existing hospital patient or save for a new patient by name/email, and update saved records)
 - `GET /api/invoices` (signed in; administrators can see all)
 - `POST /api/admin/invoices` (administrator)
 - `POST /api/invoices/:id/pay-demo` (patient account; accepts `pay-at-hospital`, `upi-demo`, or `card-demo`; simulated status only)
 - `GET /api/admin/analytics` (administrator)
 - `GET /api/notifications` (signed in)
 
-Registration, password hashing, session-based authentication, hospital selection, hospital-scoped doctors and administrators, appointment requests and statuses, age/profile updates, private report uploads, patient-controlled report sharing, prescription and invoice records, operational counts, and notifications use the backend and SQLite database. Administrators can create hospital workspaces; patient records and doctor management are scoped to the currently selected hospital.
+Registration, password hashing, session-based authentication, hospital selection, hospital-scoped doctors and administrators, appointment requests and statuses, age/profile updates, private report uploads, patient-controlled report sharing, prescription and invoice records, operational counts, and notifications use the backend and SQLite database. Administrators can create hospital workspaces; patient records and doctor management are scoped to the currently selected hospital. Hospital administrators can save prescriptions for unregistered patients using their name and email; the record remains pending within that hospital and is linked to the account when the patient registers there with the same email address.
 
 ## Prototype limitations
 

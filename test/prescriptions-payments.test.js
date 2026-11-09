@@ -15,6 +15,7 @@ test('hospital prescription records reach only their patient and invoice demo ch
     cookie: admin.cookie,
     method: 'POST',
     body: JSON.stringify({
+      patientType: 'registered',
       userId: patient.user.id,
       doctorId: doctors.body.doctors[0].id,
       medication: 'Test medication record',
@@ -60,6 +61,7 @@ test('hospital prescription records reach only their patient and invoice demo ch
     cookie: admin.cookie,
     method: 'POST',
     body: JSON.stringify({
+      patientType: 'registered',
       userId: northPatient.user.id,
       doctorId: northDoctors.body.doctors[0].id,
       medication: 'North clinic record',
@@ -110,4 +112,84 @@ test('hospital prescription records reach only their patient and invoice demo ch
   assert.equal(invoices.body.invoices[0].status, 'Paid');
   assert.equal(invoices.body.invoices[0].payment_method, 'upi-demo');
   assert.deepEqual((await request(baseUrl, '/api/invoices', { cookie: otherPatient.cookie })).body.invoices, []);
+});
+
+test('new-patient prescriptions stay hospital-scoped until the matching patient registers', async context => {
+  const { baseUrl, adminEmail, adminPassword } = await startTestApp(context);
+  const hospitals = (await request(baseUrl, '/api/hospitals')).body.hospitals;
+  const hospitalId = hospitals[0].id;
+  const otherHospital = hospitals.find(hospital => hospital.id !== hospitalId);
+  const admin = await login(baseUrl, adminEmail, adminPassword);
+  const doctors = await request(baseUrl, '/api/doctors', { cookie: admin.cookie });
+  const pendingEmail = `pending-${process.pid}-${Date.now()}@example.invalid`;
+
+  const created = await request(baseUrl, '/api/admin/prescriptions', {
+    cookie: admin.cookie,
+    method: 'POST',
+    body: JSON.stringify({
+      patientType: 'new',
+      patientName: 'Future Patient',
+      patientEmail: pendingEmail,
+      doctorId: doctors.body.doctors[0].id,
+      medication: 'Pending medication',
+      directions: 'Directions recorded by the hospital clinician.',
+      refills: 2
+    })
+  });
+  assert.equal(created.response.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.pendingPrescription.patient_email, pendingEmail);
+
+  const pendingList = await request(baseUrl, '/api/prescriptions', { cookie: admin.cookie });
+  assert.equal(pendingList.body.pendingPrescriptions.length, 1);
+  assert.equal(pendingList.body.pendingPrescriptions[0].patient_name, 'Future Patient');
+  const otherHospitalEmail = `wrong-hospital-${process.pid}-${Date.now()}@example.invalid`;
+  const otherHospitalPending = await request(baseUrl, '/api/admin/prescriptions', {
+    cookie: admin.cookie,
+    method: 'POST',
+    body: JSON.stringify({
+      patientType: 'new',
+      patientName: 'Wrong Hospital Patient',
+      patientEmail: otherHospitalEmail,
+      medication: 'Hospital-specific medication',
+      directions: 'This record must remain at its originating hospital.',
+      refills: 0
+    })
+  });
+  assert.equal(otherHospitalPending.response.status, 201, JSON.stringify(otherHospitalPending.body));
+  const otherHospitalRegistration = await request(baseUrl, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Wrong Hospital Patient',
+      email: otherHospitalEmail,
+      password: 'Test-Patient-Password-2026!',
+      hospitalId: otherHospital.id,
+      age: 38
+    })
+  });
+  assert.equal(otherHospitalRegistration.response.status, 201, JSON.stringify(otherHospitalRegistration.body));
+  assert.equal(otherHospitalRegistration.body.claimedPrescriptions, 0);
+  const otherHospitalPatient = { cookie: otherHospitalRegistration.cookie };
+  assert.deepEqual((await request(baseUrl, '/api/prescriptions', { cookie: otherHospitalPatient.cookie })).body.prescriptions, []);
+  assert.deepEqual((await request(baseUrl, '/api/prescriptions', { cookie: otherHospitalPatient.cookie })).body.pendingPrescriptions, []);
+  assert.equal((await request(baseUrl, '/api/prescriptions', { cookie: admin.cookie })).body.pendingPrescriptions.length, 2);
+
+  const registration = await request(baseUrl, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Future Patient',
+      email: pendingEmail,
+      password: 'Test-Patient-Password-2026!',
+      hospitalId,
+      age: 38
+    })
+  });
+  assert.equal(registration.response.status, 201, JSON.stringify(registration.body));
+  assert.equal(registration.body.claimedPrescriptions, 1);
+  const patientPrescriptions = await request(baseUrl, '/api/prescriptions', { cookie: registration.cookie });
+  assert.equal(patientPrescriptions.body.prescriptions.length, 1);
+  assert.equal(patientPrescriptions.body.prescriptions[0].medication, 'Pending medication');
+  assert.deepEqual(patientPrescriptions.body.pendingPrescriptions, []);
+  const remainingPending = (await request(baseUrl, '/api/prescriptions', { cookie: admin.cookie })).body.pendingPrescriptions;
+  assert.equal(remainingPending.length, 1);
+  assert.equal(remainingPending[0].patient_email, otherHospitalEmail);
 });

@@ -1,4 +1,4 @@
-const state={role:'user',page:'dashboard',name:'Vedant Sharma',email:'',age:null,hospital:null,hospitals:[],adminReports:[],appointments:[],reports:[],prescriptions:[],invoices:[],patients:[],analytics:null,search:''};
+const state={role:'user',page:'dashboard',name:'Vedant Sharma',email:'',age:null,hospital:null,hospitals:[],adminReports:[],appointments:[],reports:[],prescriptions:[],pendingPrescriptions:[],invoices:[],patients:[],analytics:null,search:''};
 const patientAppointments=[
  {name:'Dr. Ananya Mehta',dept:'Cardiology',date:'Today, 10:30 AM',status:'Confirmed',type:'Follow-up'},
  {name:'Dr. Rahul Kapoor',dept:'General Medicine',date:'Tomorrow, 2:00 PM',status:'Pending',type:'Consultation'},
@@ -197,6 +197,7 @@ async function refreshBackendData() {
   apiPatients = patientData.patients;
   state.reports = reportData.reports;
   state.prescriptions = prescriptionData.prescriptions;
+  state.pendingPrescriptions = prescriptionData.pendingPrescriptions || [];
   state.invoices = invoiceData.invoices;
   state.patients = apiPatients;
   state.analytics = analyticsData;
@@ -225,7 +226,7 @@ function formatAppointmentDate(value) {
 async function logout() {
   try { await apiRequest('/api/auth/logout', { method: 'POST', body: '{}' }); }
   catch (err) { console.warn('Sign-out request failed:', err.message); }
-  state.appointments = []; state.reports = []; state.adminReports = []; state.prescriptions = []; state.invoices = []; state.patients = []; state.analytics = null; state.hospital = null; state.hospitals = []; state.age = null;
+  state.appointments = []; state.reports = []; state.adminReports = []; state.prescriptions = []; state.pendingPrescriptions = []; state.invoices = []; state.patients = []; state.analytics = null; state.hospital = null; state.hospitals = []; state.age = null;
   apiDoctors = []; apiPatients = []; state.email = ''; state.name = ''; state.role = 'user';
   document.getElementById('app').classList.add('hidden');
   document.getElementById('landing').classList.remove('hidden');
@@ -568,11 +569,12 @@ function renderPatientAIHub() {
 
 function renderPrescriptions() {
   const rows = state.prescriptions.map(prescription => `<tr>${state.role==='admin'?`<td>${escapeHtml(prescription.patient_name)}</td>`:''}<td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status ${prescription.status.toLowerCase()}">${escapeHtml(prescription.status)}</span></td>${state.role==='admin'?`<td><button class="link-btn" onclick="editPrescription(${Number(prescription.id)})">Edit</button></td>`:''}</tr>`).join('');
-  const createForm = state.role === 'admin' ? `<div class="panel" style="margin-bottom:16px"><h2 id="prescriptionFormTitle">Add prescription record</h2><form id="prescriptionForm" onsubmit="createPrescription(event)"><input type="hidden" name="id" value=""><div class="field"><label for="prescriptionPatient">Patient</label><select id="prescriptionPatient" name="userId" required><option value="">Choose a patient</option>${state.patients.map(patient=>`<option value="${Number(patient.id)}">${escapeHtml(patient.name)} — ${escapeHtml(patient.email)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionDoctor">Clinician</label><select id="prescriptionDoctor" name="doctorId"><option value="">Not specified</option>${apiDoctors.map(doctor=>`<option value="${Number(doctor.id)}">${escapeHtml(doctor.name)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionMedication">Prescription name</label><input id="prescriptionMedication" name="medication" maxlength="120" required></div><div class="field"><label for="prescriptionDirections">Directions as provided by clinician</label><textarea id="prescriptionDirections" name="directions" maxlength="500" required></textarea></div><div class="field"><label for="prescriptionRefills">Refills</label><input id="prescriptionRefills" name="refills" type="number" min="0" max="20" value="0" required></div><div class="field hidden" id="prescriptionStatusField"><label for="prescriptionStatus">Status</label><select id="prescriptionStatus" name="status"><option>Active</option><option>Completed</option><option>Stopped</option></select></div><div id="prescriptionError" class="error" role="alert"></div><button class="btn btn-primary" id="prescriptionSubmit" type="submit">Save prescription</button><button class="btn btn-outline hidden" id="prescriptionCancel" type="button" onclick="cancelPrescriptionEdit()">Cancel edit</button></form></div>` : '';
+  const pendingRows = state.role === 'admin' ? state.pendingPrescriptions.map(prescription => `<tr><td>${escapeHtml(prescription.patient_name)}<small>${escapeHtml(prescription.patient_email)}</small></td><td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status pending">Awaiting registration</span></td><td>—</td></tr>`).join('') : '';
+  const createForm = state.role === 'admin' ? `<div class="panel" style="margin-bottom:16px"><h2 id="prescriptionFormTitle">Add prescription record</h2><form id="prescriptionForm" onsubmit="createPrescription(event)"><input type="hidden" name="id" value=""><div class="field"><label for="prescriptionPatientType">Patient type</label><select id="prescriptionPatientType" name="patientType" onchange="setPrescriptionPatientType(this.value)"><option value="registered">Existing registered patient</option><option value="new">New patient (not registered yet)</option></select></div><div class="field" id="registeredPatientField"><label for="prescriptionPatient">Patient</label><select id="prescriptionPatient" name="userId" required><option value="">Choose a patient</option>${state.patients.map(patient=>`<option value="${Number(patient.id)}">${escapeHtml(patient.name)} — ${escapeHtml(patient.email)}</option>`).join('')}</select></div><div id="newPrescriptionPatientFields" class="hidden"><div class="field"><label for="newPrescriptionPatientName">Patient name</label><input id="newPrescriptionPatientName" name="patientName" maxlength="80" disabled></div><div class="field"><label for="newPrescriptionPatientEmail">Patient email</label><input id="newPrescriptionPatientEmail" name="patientEmail" type="email" maxlength="254" disabled></div><p class="muted">This record will be linked to the patient’s account if they register at this hospital with this email address.</p></div><div class="field"><label for="prescriptionDoctor">Clinician</label><select id="prescriptionDoctor" name="doctorId"><option value="">Not specified</option>${apiDoctors.map(doctor=>`<option value="${Number(doctor.id)}">${escapeHtml(doctor.name)}</option>`).join('')}</select></div><div class="field"><label for="prescriptionMedication">Prescription name</label><input id="prescriptionMedication" name="medication" maxlength="120" required></div><div class="field"><label for="prescriptionDirections">Directions as provided by clinician</label><textarea id="prescriptionDirections" name="directions" maxlength="500" required></textarea></div><div class="field"><label for="prescriptionRefills">Refills</label><input id="prescriptionRefills" name="refills" type="number" min="0" max="20" value="0" required></div><div class="field hidden" id="prescriptionStatusField"><label for="prescriptionStatus">Status</label><select id="prescriptionStatus" name="status"><option>Active</option><option>Completed</option><option>Stopped</option></select></div><div id="prescriptionError" class="error" role="alert"></div><button class="btn btn-primary" id="prescriptionSubmit" type="submit">Save prescription</button><button class="btn btn-outline hidden" id="prescriptionCancel" type="button" onclick="cancelPrescriptionEdit()">Cancel edit</button></form></div>` : '';
   const patientHeading = state.role === 'admin' ? '<th>Patient</th>' : '';
   const emptyMessage = state.role === 'admin' ? 'Use the form above to add a record.' : 'Your care team has not added any prescription records.';
-  const table = rows
-    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Prescription</th><th>Clinician</th><th>Directions</th><th>Refills</th><th>Status</th>${state.role==='admin'?'<th>Action</th>':''}</tr></thead><tbody>${rows}</tbody></table></div>`
+  const table = rows || pendingRows
+    ? `<div class="table-wrap"><table><thead><tr>${patientHeading}<th>Prescription</th><th>Clinician</th><th>Directions</th><th>Refills</th><th>Status</th>${state.role==='admin'?'<th>Action</th>':''}</tr></thead><tbody>${rows}${pendingRows}</tbody></table></div>`
     : `<div class="empty-state"><strong>No prescriptions on file</strong><p>${emptyMessage}</p></div>`;
   return `<div class="welcome"><div><h1>Prescriptions</h1><p>${state.role==='admin'?'Add and review prescription records for patients at your active hospital.':'Review prescription information added by your hospital care team.'}</p></div><button class="btn btn-outline" onclick="exportPrescriptions()">↓ Download list</button></div>${createForm}<div class="panel">${panelHead('Prescription records',state.role==='admin'?'Saved by your hospital and visible only to the selected patient.':'Records shared with your account by your hospital')}${table}</div><div class="notice" style="margin-top:16px">For record-keeping only. Prescription entries come from the hospital care team. AI does not choose, interpret, or change medication or doses. Ask your clinician or pharmacist if you have questions; do not change medication based on this prototype.</div>`;
 }
@@ -819,6 +821,8 @@ function editPrescription(id) {
     return;
   }
   form.elements.id.value = String(prescription.id);
+  form.elements.patientType.value = 'registered';
+  setPrescriptionPatientType('registered');
   form.elements.userId.value = String(prescription.user_id);
   form.elements.userId.disabled = true;
   form.elements.doctorId.value = prescription.doctor_id == null ? '' : String(prescription.doctor_id);
@@ -839,12 +843,31 @@ function cancelPrescriptionEdit() {
   if (!form) return;
   form.reset();
   form.elements.id.value = '';
+  setPrescriptionPatientType(form.elements.patientType.value);
   form.elements.userId.disabled = false;
   document.getElementById('prescriptionFormTitle').textContent = 'Add prescription record';
   document.getElementById('prescriptionStatusField').classList.add('hidden');
   document.getElementById('prescriptionSubmit').textContent = 'Save prescription';
   document.getElementById('prescriptionCancel').classList.add('hidden');
   document.getElementById('prescriptionError').textContent = '';
+}
+
+function setPrescriptionPatientType(type) {
+  const registered = type === 'registered';
+  const patientField = document.getElementById('registeredPatientField');
+  const newPatientFields = document.getElementById('newPrescriptionPatientFields');
+  const patientSelect = document.getElementById('prescriptionPatient');
+  const patientName = document.getElementById('newPrescriptionPatientName');
+  const patientEmail = document.getElementById('newPrescriptionPatientEmail');
+  if (!patientField || !newPatientFields || !patientSelect || !patientName || !patientEmail) return;
+  patientField.classList.toggle('hidden', !registered);
+  newPatientFields.classList.toggle('hidden', registered);
+  patientSelect.disabled = !registered;
+  patientSelect.required = registered;
+  patientName.disabled = registered;
+  patientName.required = !registered;
+  patientEmail.disabled = registered;
+  patientEmail.required = !registered;
 }
 
 async function createInvoice(event) {
