@@ -53,3 +53,18 @@ h1{font-size:clamp(42px,5vw,66px);line-height:1.05;letter-spacing:-2.8px;margin:
 .faq-list details:last-child { border-bottom:0; }
 .faq-list summary { color:var(--ink); cursor:pointer; font-weight:800; }
 .faq-list details p { margin:10px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+.health-symptoms,.health-report-choice { border:1px solid var(--line); border-radius:12px; padding:12px; margin:14px 0; }
+.health-symptoms legend,.health-report-choice legend { color:#38574c; font-size:12px; font-weight:800; padding:0 5px; }
+.health-symptoms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.health-symptoms label,.health-consent-choice { display:flex; align-items:flex-start; gap:8px; color:#526a60; font-size:12px; line-height:1.5; }
+.health-symptoms input,.health-consent-choice input { accent-color:var(--green); flex:0 0 auto; margin-top:3px; }
+.health-consent-choice { margin:12px 0; }
+.health-consent-choice small { color:var(--muted); }
+.health-answer { margin-top:18px; padding:18px; border-radius:14px; background:var(--mint); border:1px solid var(--line); color:#526a60; font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
+.health-answer h3,.health-answer h4 { color:var(--ink); margin:0 0 10px; }
+.health-answer p { white-space:normal; }
+.health-answer a { color:var(--green-dark); font-weight:750; }
+.health-facts { padding-left:20px; color:#526a60; font-size:13px; line-height:1.75; }
+.health-facts li { margin:8px 0; }
+.muted { color:var(--muted); font-size:12px; line-height:1.7; }
+@media(max-width:760px) { .health-symptoms { grid-template-columns:1fr; } }

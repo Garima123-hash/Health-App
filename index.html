@@ -48,7 +48,7 @@
     <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
     <article class="feature"><div class="feature-icon">⌁</div><h3>Clear, connected insights</h3><p>Present useful summaries and status indicators in an accessible, responsive dashboard.</p></article>
   </div></div></section>
-  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Accounts, hospital workspaces, appointments, doctor listings, patient-owned report uploads, prescription and invoice records, and dashboard summaries use a local SQLite backend. The report overview only extracts selectable PDF text locally; it is not AI, cannot read scans or images, and is not diagnosis or medical advice. Password reset, real payment processing, and medical integrations are not provided. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Accounts, hospital workspaces, appointments, doctor listings, patient-owned report uploads, prescription and invoice records, and dashboard summaries use the MongoDB-backed API. Optional Women’s Health logging and its local source-retrieval guide are not AI, cannot diagnose PCOS/PCOD or interpret medical history, and do not provide treatment advice. The report overview only extracts selectable PDF text locally; it cannot read scans or images. Password reset, real payment processing, and medical integrations are not provided. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
   <footer class="footer">© 2026 CareSphere Health Platform · Designed for a more connected care experience</footer>
 </div>
 
@@ -99,6 +99,7 @@
       <section id="page-doctors" class="page-section"></section>
       <section id="page-records" class="page-section"></section>
       <section id="page-ai" class="page-section"></section>
+      <section id="page-womens-health" class="page-section"></section>
       <section id="page-prescriptions" class="page-section"></section>
       <section id="page-billing" class="page-section"></section>
       <section id="page-patients" class="page-section"></section>

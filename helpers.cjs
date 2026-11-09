@@ -1,12 +1,16 @@
+'use strict';
+
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
+const crypto = require('node:crypto');
 const { once } = require('node:events');
+const { MongoClient } = require('mongodb');
 
 const root = __dirname;
+const uploadDirectory = path.join(root, 'backend', 'data', 'uploads');
 
 async function unusedPort() {
   const server = net.createServer();
@@ -17,9 +21,22 @@ async function unusedPort() {
   return port;
 }
 
+function isolatedMongoUri(testId) {
+  const configuredUri = process.env.MONGODB_TEST_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/caresphere_test';
+  const uri = new URL(configuredUri);
+  if (!process.env.MONGODB_TEST_URI && process.env.MONGODB_URI
+      && !['localhost', '127.0.0.1', '::1', '[::1]'].includes(uri.hostname)) {
+    throw new Error('Set MONGODB_TEST_URI to a dedicated test MongoDB server before running integration tests.');
+  }
+  uri.pathname = `/${testId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  return uri.toString();
+}
+
 async function startTestApp(testContext) {
   const port = await unusedPort();
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'caresphere-test-'));
+  const testId = `caresphere_test_${process.pid}_${crypto.randomUUID().replace(/-/g, '')}`;
+  const mongodbUri = isolatedMongoUri(testId);
+  const uploadPrefix = `${testId}-`;
   const adminEmail = `admin-${process.pid}-${port}@example.invalid`;
   const adminPassword = 'Test-Admin-Password-2026!';
   const child = spawn(process.execPath, [path.join(root, 'backend', 'server.js')], {
@@ -27,8 +44,10 @@ async function startTestApp(testContext) {
     env: {
       ...process.env,
       PORT: String(port),
-      CARESPHERE_DATA_DIR: dataDir,
-      SESSION_SECRET: 'test-only-session-secret-with-sufficient-length',
+      MONGODB_URI: mongodbUri,
+      CARESPHERE_UPLOAD_PREFIX: uploadPrefix,
+      DOTENV_CONFIG_PATH: path.join(root, 'configuration', '.env.example'),
+      JWT_SECRET: 'test-only-jwt-secret-with-sufficient-length',
       ADMIN_EMAIL: adminEmail,
       ADMIN_PASSWORD: adminPassword,
       ADMIN_HOSPITAL_NAME: 'CareSphere Community Hospital'
@@ -44,15 +63,28 @@ async function startTestApp(testContext) {
       child.kill();
       await Promise.race([
         once(child, 'exit'),
-        new Promise(resolve => setTimeout(resolve, 3000))
+        new Promise(resolve => setTimeout(resolve, 5000))
       ]);
     }
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    const client = new MongoClient(mongodbUri, { serverSelectionTimeoutMS: 3000 });
+    try {
+      await client.connect();
+      await client.db(testId).dropDatabase();
+    } catch (error) {
+      if (error.code !== 'ECONNREFUSED' && error.code !== 'ETIMEDOUT') throw error;
+    } finally {
+      await client.close().catch(() => {});
+    }
+    if (fs.existsSync(uploadDirectory)) {
+      for (const name of fs.readdirSync(uploadDirectory)) {
+        if (name.startsWith(uploadPrefix)) fs.rmSync(path.join(uploadDirectory, name), { force: true });
+      }
+    }
   });
 
   const baseUrl = `http://127.0.0.1:${port}`;
   let ready = false;
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
     if (child.exitCode !== null) break;
     try {
       const response = await fetch(`${baseUrl}/api/health`);
@@ -67,41 +99,35 @@ async function startTestApp(testContext) {
   return { baseUrl, adminEmail, adminPassword };
 }
 
-function cookieFrom(response) {
-  const cookies = response.headers.getSetCookie?.() || [];
-  assert.ok(cookies.length, 'Expected the server to issue a session cookie');
-  return cookies[0].split(';')[0];
-}
-
-async function request(baseUrl, route, { cookie, ...options } = {}) {
+async function request(baseUrl, route, { token, ...options } = {}) {
   const headers = { ...(options.headers || {}) };
-  if (cookie) headers.Cookie = cookie;
+  if (token) headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
   const response = await fetch(`${baseUrl}${route}`, { ...options, headers });
   const contentType = response.headers.get('content-type') || '';
   const body = contentType.includes('application/json') ? await response.json() : await response.text();
-  return { response, body, cookie: response.headers.getSetCookie?.()[0]?.split(';')[0] };
+  return { response, body, token: body.accessToken };
 }
 
 async function registerPatient(baseUrl, hospitalId, name = 'Test Patient') {
   const email = `patient-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.invalid`;
-  const { response, body, cookie } = await request(baseUrl, '/api/auth/register', {
+  const { response, body, token } = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({ name, email, password: 'Test-Patient-Password-2026!', hospitalId, age: 38 })
   });
   assert.equal(response.status, 201, JSON.stringify(body));
-  return { user: body.user, email, cookie };
+  return { user: body.user, email, token };
 }
 
 async function login(baseUrl, email, password) {
-  const { response, body, cookie } = await request(baseUrl, '/api/auth/login', {
+  const { response, body, token } = await request(baseUrl, '/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password })
   });
   assert.equal(response.status, 200, JSON.stringify(body));
-  return { user: body.user, cookie };
+  return { user: body.user, token };
 }
 
 function textPdf(text) {

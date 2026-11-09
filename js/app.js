@@ -1,4 +1,4 @@
-const state={role:'user',page:'dashboard',name:'Vedant Sharma',email:'',age:null,hospital:null,hospitals:[],adminReports:[],appointments:[],reports:[],prescriptions:[],pendingPrescriptions:[],invoices:[],patients:[],analytics:null,search:''};
+const state={role:'user',page:'dashboard',name:'Vedant Sharma',email:'',age:null,hospital:null,hospitals:[],adminReports:[],appointments:[],reports:[],prescriptions:[],pendingPrescriptions:[],invoices:[],patients:[],analytics:null,womensHealth:null,womensHealthAnswer:null,search:''};
 const patientAppointments=[
  {name:'Dr. Ananya Mehta',dept:'Cardiology',date:'Today, 10:30 AM',status:'Confirmed',type:'Follow-up'},
  {name:'Dr. Rahul Kapoor',dept:'General Medicine',date:'Tomorrow, 2:00 PM',status:'Pending',type:'Consultation'},
@@ -25,8 +25,8 @@ function closeAuth(){document.getElementById('authOverlay').classList.add('hidde
 function setRole(role){state.role=role;document.getElementById('roleUser').classList.toggle('active',role==='user');document.getElementById('roleAdmin').classList.toggle('active',role==='admin');document.getElementById('loginError').textContent='';}
 function login(e){e.preventDefault();const email=document.getElementById('email').value.trim();const pass=document.getElementById('password').value;if(!email||pass.length<4){document.getElementById('loginError').textContent='Please enter a valid email and a password with at least 4 characters.';return;}state.email=email;state.name=state.role==='admin'?'Hospital Administrator':(email.split('@')[0].replace(/[._-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Patient');closeAuth();document.getElementById('landing').classList.add('hidden');document.getElementById('app').classList.remove('hidden');document.getElementById('profileName').textContent=state.name;document.getElementById('profileRole').textContent=state.role==='admin'?'Administrator':'Patient account';document.getElementById('avatarInitials').textContent=state.role==='admin'?'AD':state.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();buildNav();renderAll();go('dashboard');}
 function logout(){document.getElementById('app').classList.add('hidden');document.getElementById('landing').classList.remove('hidden');document.getElementById('sidebar').classList.remove('open');state.page='dashboard';}
-function buildNav(){const nav=state.role==='admin'?adminNav:userNav;document.getElementById('navItems').innerHTML=nav.map(([id,ico,label])=>`<button class="nav-item ${state.page===id?'active':''}" onclick="go('${id}')"><span class="nav-ico">${ico}</span>${label}</button>`).join('');}
-function go(page){state.page=page;document.querySelectorAll('.page-section').forEach(x=>x.classList.remove('active'));const section=document.getElementById('page-'+page);if(section)section.classList.add('active');document.getElementById('topPage').textContent=({dashboard:'Overview',appointments:state.role==='admin'?'Appointments':'My appointments',doctors:state.role==='admin'?'Doctors & departments':'Find a doctor',records:'Health records',ai:'Reports & AI usage',prescriptions:'Prescriptions',billing:state.role==='admin'?'Billing':'Bills & payments',patients:'Patients',staff:'Staff management',reports:'Reports & analytics',hospitals:'Hospitals',faq:'FAQs',settings:state.role==='admin'?'Account settings':'My profile'})[page]||'Overview';buildNav();document.getElementById('sidebar').classList.remove('open');}
+function buildNav(){const nav=state.role==='admin'?adminNav:(state.womensHealth?.enabled?[...userNav,['womens-health','♡','Women’s health']]:userNav);document.getElementById('navItems').innerHTML=nav.map(([id,ico,label])=>`<button class="nav-item ${state.page===id?'active':''}" onclick="go('${id}')"><span class="nav-ico">${ico}</span>${label}</button>`).join('');}
+function go(page){state.page=page;document.querySelectorAll('.page-section').forEach(x=>x.classList.remove('active'));const section=document.getElementById('page-'+page);if(section)section.classList.add('active');document.getElementById('topPage').textContent=({dashboard:'Overview',appointments:state.role==='admin'?'Appointments':'My appointments',doctors:state.role==='admin'?'Doctors & departments':'Find a doctor',records:'Health records',ai:'Reports & AI usage',prescriptions:'Prescriptions',billing:state.role==='admin'?'Billing':'Bills & payments',patients:'Patients',staff:'Staff management',reports:'Reports & analytics',hospitals:'Hospitals',faq:'FAQs',settings:state.role==='admin'?'Account settings':'My profile','womens-health':'Women’s health'})[page]||'Overview';buildNav();document.getElementById('sidebar').classList.remove('open');}
 function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
 function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.add('hidden'),3000)}
 function stat(title,value,icon,foot){return `<article class="stat-card"><div class="stat-head"><span>${title}</span><span class="stat-icon">${icon}</span></div><div class="stat-value">${value}</div><div class="stat-foot">${foot}</div></article>`}
@@ -64,12 +64,42 @@ function saveProfile(e){e.preventDefault();state.name=document.getElementById('p
 function renderAll(){document.getElementById('page-dashboard').innerHTML=state.role==='admin'?adminDashboard():userDashboard();document.getElementById('page-appointments').innerHTML=renderAppointments();document.getElementById('page-doctors').innerHTML=renderDoctors();document.getElementById('page-records').innerHTML=renderRecords();document.getElementById('page-prescriptions').innerHTML=renderPrescriptions();document.getElementById('page-billing').innerHTML=renderBilling();document.getElementById('page-patients').innerHTML=patientDirectory();document.getElementById('page-staff').innerHTML=renderStaff();document.getElementById('page-reports').innerHTML=renderReports();document.getElementById('page-settings').innerHTML=renderSettings();}
 
 
-// --- CareSphere backend integration (Express + SQLite) ---
+// --- CareSphere backend integration (Express + MongoDB) ---
 let authMode = 'login';
 let apiDoctors = [];
 let apiPatients = [];
+let accessToken = '';
+let accessTokenRefresh = null;
+async function refreshAccessToken() {
+  if (!accessTokenRefresh) {
+    accessTokenRefresh = (async () => {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      if (!response.ok) {
+        accessToken = '';
+        throw new Error(data.error || `Token refresh failed (${response.status})`);
+      }
+      accessToken = data.accessToken;
+      return accessToken;
+    })().finally(() => { accessTokenRefresh = null; });
+  }
+  return accessTokenRefresh;
+}
 async function apiRequest(url, options={}) {
-  const response = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers||{}) }, ...options });
+  const headers = { 'Content-Type': 'application/json', ...(options.headers||{}) };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  let response = await fetch(url, { ...options, credentials: 'same-origin', headers });
+  if (response.status === 401 && accessToken && url !== '/api/auth/refresh' && !url.startsWith('/api/auth/login') && !url.startsWith('/api/auth/register')) {
+    await refreshAccessToken();
+    headers.Authorization = `Bearer ${accessToken}`;
+    response = await fetch(url, { ...options, credentials: 'same-origin', headers });
+  }
   let data = {};
   try { data = await response.json(); } catch (_) {}
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
@@ -143,6 +173,8 @@ async function login(e) {
     } else {
       result = await apiRequest('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
     }
+    if (!result.accessToken) throw new Error('Authentication response did not include an access token.');
+    accessToken = result.accessToken;
     state.email = result.user.email;
     state.name = result.user.name;
     state.role = result.user.role === 'admin' ? 'admin' : 'user';
@@ -171,7 +203,7 @@ async function enterDashboard() {
   }
 }
 async function refreshBackendData() {
-  const [appointmentData, doctorData, reportData, prescriptionData, invoiceData, patientData, analyticsData, hospitalData, hospitalListData, adminReportData] = await Promise.all([
+  const [appointmentData, doctorData, reportData, prescriptionData, invoiceData, patientData, analyticsData, hospitalData, hospitalListData, adminReportData, womensHealthData] = await Promise.all([
     apiRequest('/api/appointments'),
     apiRequest('/api/doctors'),
     state.role === 'admin' ? Promise.resolve({ reports: [] }) : apiRequest('/api/reports'),
@@ -181,11 +213,13 @@ async function refreshBackendData() {
     state.role === 'admin' ? apiRequest('/api/admin/analytics') : Promise.resolve(null),
     apiRequest('/api/hospital/me'),
     state.role === 'admin' ? apiRequest('/api/admin/hospitals') : Promise.resolve({ hospitals: [] }),
-    state.role === 'admin' ? apiRequest('/api/admin/reports') : Promise.resolve({ reports: [] })
+    state.role === 'admin' ? apiRequest('/api/admin/reports') : Promise.resolve({ reports: [] }),
+    state.role === 'admin' ? Promise.resolve(null) : apiRequest('/api/womens-health')
   ]);
   state.appointments = appointmentData.appointments.map(a => ({
     id: a.id,
     doctorId: a.doctor_id,
+    doctorName: a.doctor_name,
     name: state.role === 'admin' ? (a.patient_name || 'Patient') : a.doctor_name,
     dept: a.specialty,
     date: formatAppointmentDate(a.appointment_at),
@@ -204,6 +238,8 @@ async function refreshBackendData() {
   state.hospital = hospitalData.hospital;
   state.hospitals = hospitalListData.hospitals;
   state.adminReports = adminReportData.reports;
+  state.womensHealth = womensHealthData;
+  state.womensHealthAnswer = null;
 }
 window.CareSphereApp = window.CareSphereApp || {};
 window.CareSphereApp.refreshBackendData = refreshBackendData;
@@ -226,7 +262,8 @@ function formatAppointmentDate(value) {
 async function logout() {
   try { await apiRequest('/api/auth/logout', { method: 'POST', body: '{}' }); }
   catch (err) { console.warn('Sign-out request failed:', err.message); }
-  state.appointments = []; state.reports = []; state.adminReports = []; state.prescriptions = []; state.pendingPrescriptions = []; state.invoices = []; state.patients = []; state.analytics = null; state.hospital = null; state.hospitals = []; state.age = null;
+  accessToken = '';
+  state.appointments = []; state.reports = []; state.adminReports = []; state.prescriptions = []; state.pendingPrescriptions = []; state.invoices = []; state.patients = []; state.analytics = null; state.hospital = null; state.hospitals = []; state.age = null; state.womensHealth = null; state.womensHealthAnswer = null;
   apiDoctors = []; apiPatients = []; state.email = ''; state.name = ''; state.role = 'user';
   document.getElementById('app').classList.add('hidden');
   document.getElementById('landing').classList.remove('hidden');
@@ -387,6 +424,7 @@ async function saveProfile(e) {
 }
 async function restoreSession() {
   try {
+    await refreshAccessToken();
     const result = await apiRequest('/api/auth/me');
     if (result.user) {
       state.email = result.user.email; state.name = result.user.name;
@@ -395,9 +433,9 @@ async function restoreSession() {
       state.hospital = { id:result.user.hospital_id,name:result.user.hospital_name };
       await enterDashboard();
     }
-  } catch (err) { console.warn('Session restore unavailable:', err.message); }
+  } catch (err) { console.warn('Authentication restore unavailable:', err.message); }
 }
-// Ask the backend whether an existing session should be restored after refresh.
+// Restore the in-memory access token using the rotating HttpOnly refresh cookie.
 restoreSession();
 
 
@@ -405,10 +443,13 @@ restoreSession();
 function userDashboard() {
   const count = state.appointments.length;
   const due = state.invoices.filter(invoice => invoice.status === 'Due').length;
+  const womensHealthCard = state.womensHealth?.enabled
+    ? `<div class="panel" style="margin-top:16px">${panelHead('Your Women’s Health space','Optional mood and cycle tracking, plus source-linked health education')}<button class="btn btn-primary" onclick="go('womens-health')">Open Women’s Health →</button></div>`
+    : `<div class="panel" style="margin-top:16px">${panelHead('Optional Women’s Health space','Available if this section is relevant to you; CareSphere does not infer sex or gender from your profile.')}<p>Enable private cycle and mood logs, a small local health-information guide, and educational resources. You can delete this data at any time.</p><button class="btn btn-outline" onclick="enableWomensHealth()">Enable this section</button></div>`;
   return `<div class="welcome"><div><h1>Good day, ${escapeHtml(state.name.split(' ')[0])} 👋</h1><p>Your account information, appointments, and uploaded files are saved in CareSphere.</p></div><div class="welcome-actions"><button class="btn btn-outline" onclick="go('doctors')">Find a doctor</button><button class="btn btn-primary" onclick="bookAppointment()">＋ Book appointment</button></div></div>
   <div class="stats">${stat('Appointments',String(count),'▦','Saved to your account')}${stat('Available doctors',String(apiDoctors.length),'✚','From the doctor directory')}${stat('Health records',String(state.reports.length),'▤','Uploaded documents')}${stat('Due invoices',String(due),'＄','Demo records only')}</div>
   <div class="dashboard-grid"><div class="panel">${panelHead('Your appointments','Requests saved in the CareSphere database')}${count ? appointmentsTable(state.appointments.slice(0,5),false) : '<div class="empty-state"><strong>No appointments yet</strong><p>Choose Find a doctor to request your first appointment.</p></div>'}<button class="btn btn-light" style="margin-top:12px" onclick="go(\'appointments\')">View all appointments →</button></div><div class="panel">${panelHead('Quick links','Open your saved information')}<div class="quick-grid">${quick('▤','Health records',`${state.reports.length} uploaded`, "go('records')")}${quick('♧','Prescriptions',`${state.prescriptions.length} on file`, "go('prescriptions')")}${quick('＄','Bills & payments',`${due} due`, "go('billing')")}${quick('⚙','My profile','Update account details', "go('settings')")}</div></div></div>
-  <div class="notice" style="margin-top:16px">Prescription directions are provided by your care team. Invoice payment status in this prototype is simulated and does not charge money.</div>`;
+  ${womensHealthCard}<div class="notice" style="margin-top:16px">Prescription directions are provided by your care team. Invoice payment status in this prototype is simulated and does not charge money.</div>`;
 }
 
 let appointmentSearch = '';
@@ -432,6 +473,7 @@ function renderAll() {
   document.getElementById('page-doctors').innerHTML = renderDoctors();
   document.getElementById('page-records').innerHTML = renderRecords();
   document.getElementById('page-ai').innerHTML = renderPatientAIHub();
+  document.getElementById('page-womens-health').innerHTML = renderWomensHealth();
   document.getElementById('page-prescriptions').innerHTML = renderPrescriptions();
   document.getElementById('page-billing').innerHTML = renderBilling();
   document.getElementById('page-patients').innerHTML = patientDirectory();
@@ -451,7 +493,7 @@ function adminDashboard() {
 }
 
 function appointmentsTable(rows, admin=false) {
-  return `<div class="table-wrap"><table><thead><tr><th>${admin?'Patient':'Doctor'}</th><th>${admin?'Department / clinician':'Specialty'}</th><th>Date & time</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(appointment => `<tr data-status="${escapeHtml(appointment.status.toLowerCase())}"><td><div class="person-cell"><div class="patient-avatar">${escapeHtml((appointment.name.match(/\b\w/g)||[]).slice(0,2).join(''))}</div><div><strong>${escapeHtml(appointment.name)}</strong><small>${escapeHtml(appointment.type || 'Consultation')}</small></div></div></td><td>${escapeHtml(appointment.dept)}</td><td>${escapeHtml(appointment.date)}</td><td><span class="status ${escapeHtml(appointment.status.toLowerCase())}">${escapeHtml(appointment.status)}</span></td><td>${admin?`<select aria-label="Update appointment status" onchange="updateAppointmentStatus(${Number(appointment.id)},this.value)">${['Pending','Confirmed','Completed','Cancelled'].map(status=>`<option value="${status}" ${status===appointment.status?'selected':''}>${status}</option>`).join('')}</select>`:`<button class="link-btn" onclick="appointmentAction(${Number(appointment.id)},false)">View details</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>${admin?'Patient':'Doctor'}</th>${admin?'<th>Doctor</th>':''}<th>${admin?'Department':'Specialty'}</th><th>Date & time</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(appointment => `<tr data-status="${escapeHtml(appointment.status.toLowerCase())}"><td><div class="person-cell"><div class="patient-avatar">${escapeHtml((appointment.name.match(/\b\w/g)||[]).slice(0,2).join(''))}</div><div><strong>${escapeHtml(appointment.name)}</strong><small>${escapeHtml(appointment.type || 'Consultation')}</small></div></div></td>${admin?`<td>${escapeHtml(appointment.doctorName || 'Not assigned')}</td>`:''}<td>${escapeHtml(appointment.dept)}</td><td>${escapeHtml(appointment.date)}</td><td><span class="status ${escapeHtml(appointment.status.toLowerCase())}">${escapeHtml(appointment.status)}</span></td><td>${admin?`<select aria-label="Update appointment status" onchange="updateAppointmentStatus(${Number(appointment.id)},this.value)">${['Pending','Confirmed','Completed','Cancelled'].map(status=>`<option value="${status}" ${status===appointment.status?'selected':''}>${status}</option>`).join('')}</select>`:`<button class="link-btn" onclick="appointmentAction(${Number(appointment.id)},false)">View details</button>`}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function appointmentAction(id) {
@@ -567,6 +609,147 @@ function renderPatientAIHub() {
   return `<div class="welcome"><div><h1>Reports & AI usage</h1><p>View your uploaded reports and run a private, local text overview.</p></div><button class="btn btn-outline" onclick="go('records')">Upload or manage reports →</button></div><div class="stats">${stat('Your reports',String(state.reports.length),'▤','Only files in your account')}${stat('Local overviews used',String(summariesUsed),'✧','Usage tracked per report')}${stat('External AI requests','0','↗','Your reports are not sent to AI providers')}${stat('AI prescription advice','Off','♧','Medication guidance stays with your clinician')}</div><div class="notice"><strong>Important:</strong> The document overview is a local extractive text helper, not an AI model. It selects text from readable PDFs; it cannot interpret results, read scans, diagnose, or recommend treatment. No report is sent to an external AI service.</div><div class="panel">${panelHead('Your report overview usage','Generate a summary and see when/how often you used it')}${reportList}<div id="reportSummary"></div></div>`;
 }
 
+function dateInputToday() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+}
+
+function renderWomensHealth() {
+  if (state.role !== 'user') return '<div class="empty-state">This private section is only available to patient accounts.</div>';
+  if (!state.womensHealth?.enabled) {
+    return `<div class="welcome"><div><h1>Women’s health</h1><p>An optional private space, available if it is relevant to you.</p></div></div><div class="panel">${panelHead('Enable your private health space','CareSphere does not infer sex or gender from account information.')}<p>Enable to keep mood and period-date logs in your own account and use a local, source-linked health-information guide. You can delete this data later.</p><button class="btn btn-primary" onclick="enableWomensHealth()">Enable Women’s Health</button></div>`;
+  }
+  const moodRows = state.womensHealth.moodEntries.map(entry => `<tr><td>${escapeHtml(entry.entry_date)}</td><td>${escapeHtml(entry.mood.replace('_',' '))}</td><td>${Number(entry.stress_level)}/5</td><td>${Number(entry.sleep_hours)} hrs</td><td>${Number(entry.energy_level)}/5</td><td>${entry.symptoms.map(escapeHtml).join(', ') || '—'}</td></tr>`).join('');
+  const cycleRows = state.womensHealth.cycleEntries.map((entry,index,entries) => {
+    const previous = entries[index+1];
+    const cycleLength = previous ? Math.round((Date.parse(`${entry.start_date}T00:00:00Z`)-Date.parse(`${previous.start_date}T00:00:00Z`))/86400000) : null;
+    return `<tr><td>${escapeHtml(entry.start_date)}</td><td>${entry.end_date ? escapeHtml(entry.end_date) : 'Not entered'}</td><td>${cycleLength ? `${cycleLength} days between logged starts` : '—'}</td></tr>`;
+  }).join('');
+  const symptomOptions = [
+    ['anxiety','Anxiety or worry'],['irritability','Irritability'],['fatigue','Fatigue'],
+    ['cramps','Cramps'],['headache','Headache'],['bloating','Bloating'],
+    ['acne','Acne'],['irregular_periods','Period changes']
+  ];
+  const reportOptions = state.womensHealth.reportOptions.map(report => `<label class="health-consent-choice"><input type="checkbox" name="reportIds" value="${Number(report.id)}"> ${escapeHtml(report.original_name)} <small>— only selected text PDFs are processed locally</small></label>`).join('');
+  const moodHistory = moodRows
+    ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Mood</th><th>Stress</th><th>Sleep</th><th>Energy</th><th>Symptoms</th></tr></thead><tbody>${moodRows}</tbody></table></div>`
+    : '<div class="empty-state"><strong>No mood check-ins yet</strong><p>Your entries are private to your patient account.</p></div>';
+  const cycleHistory = cycleRows
+    ? `<div class="table-wrap"><table><thead><tr><th>Period start</th><th>Period end</th><th>Logged interval</th></tr></thead><tbody>${cycleRows}</tbody></table></div>`
+    : '<div class="empty-state"><strong>No dates logged</strong><p>Tracking is optional; there are no predictions or diagnosis from these dates.</p></div>';
+  const answer = state.womensHealthAnswer ? `<div class="health-answer"><h3>Local health guide response</h3><p>${escapeHtml(state.womensHealthAnswer.answer).replace(/\n\n/g,'<br><br>')}</p>${state.womensHealthAnswer.moodReflection ? `<p><strong>Mood log reflection:</strong> ${Number(state.womensHealthAnswer.moodReflection.checkInsReviewed)} check-ins reviewed; ${Number(state.womensHealthAnswer.moodReflection.lowerMoodCheckIns)} marked low or very low; average stress ${state.womensHealthAnswer.moodReflection.averageStressLevel ?? 'not available'}/5. ${escapeHtml(state.womensHealthAnswer.moodReflection.message)}</p>` : ''}${state.womensHealthAnswer.reportMatches.length ? `<h4>Text excerpts from reports you selected (not interpreted)</h4><ul>${state.womensHealthAnswer.reportMatches.map(match=>`<li><strong>${escapeHtml(match.reportName)}:</strong> ${escapeHtml(match.excerpt)}</li>`).join('')}</ul>` : ''}${state.womensHealthAnswer.reportsUsed.some(report=>!report.hadSelectableText) ? '<p>At least one selected PDF had no selectable text; scanned pages are not read.</p>' : ''}${state.womensHealthAnswer.sources.length ? `<h4>Retrieved sources</h4><ul>${state.womensHealthAnswer.sources.map(source=>`<li><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a></li>`).join('')}</ul>` : ''}<small>${escapeHtml(state.womensHealthAnswer.notice)}</small></div>` : '';
+  return `<div class="welcome"><div><h1>Women’s health</h1><p>Your private cycle and mood notes, plus source-linked health education.</p></div></div>
+    <div class="notice"><strong>Important safety note:</strong> This local guide cannot diagnose PCOS/PCOD, interpret or classify medical history, or prescribe meals or treatment. The guide uses keyword retrieval from a small set of health sources; it is not an AI model. Only information you explicitly select is used. Your logs are private to your patient account.</div>
+    <div class="stats">${stat('Mood check-ins',String(state.womensHealth.moodEntries.length),'♡','Latest 30 entries')}${stat('Period dates logged',String(state.womensHealth.cycleEntries.length),'▦','Latest 24 entries')}${stat('External AI requests','0','↗','Your data stays in this app')}</div>
+    <div class="dashboard-grid">
+      <div class="panel">${panelHead('Mood check-in','A reflection tool, not a mental-health assessment')}<form onsubmit="saveWomensMood(event)">
+        <div class="field"><label for="whMoodDate">Date</label><input id="whMoodDate" name="entryDate" type="date" max="${dateInputToday()}" value="${dateInputToday()}" required></div>
+        <div class="field"><label for="whMood">How have you mostly felt?</label><select id="whMood" name="mood" required><option value="great">Very good</option><option value="good">Good</option><option value="okay" selected>Okay / mixed</option><option value="low">Low</option><option value="very_low">Very low</option></select></div>
+        <div class="field"><label for="whStress">Stress level (1 low – 5 high)</label><select id="whStress" name="stressLevel"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+        <div class="field"><label for="whSleep">Sleep last night (hours)</label><input id="whSleep" name="sleepHours" type="number" min="0" max="24" step="0.5" value="8" required></div>
+        <div class="field"><label for="whEnergy">Energy (1 low – 5 high)</label><select id="whEnergy" name="energyLevel"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+        <fieldset class="health-symptoms"><legend>Optional symptoms today</legend>${symptomOptions.map(([value,label])=>`<label><input type="checkbox" name="symptoms" value="${value}"> ${label}</label>`).join('')}</fieldset>
+        <div id="whMoodError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Save private check-in</button>
+      </form></div>
+      <div class="panel">${panelHead('Period-date notes','Optional date tracking; no predictions or diagnostic labels')}<form onsubmit="saveWomensCycle(event)">
+        <div class="field"><label for="whCycleStart">Period start date</label><input id="whCycleStart" name="startDate" type="date" max="${dateInputToday()}" required></div>
+        <div class="field"><label for="whCycleEnd">Period end date (optional)</label><input id="whCycleEnd" name="endDate" type="date" max="${dateInputToday()}"></div>
+        <div id="whCycleError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Save dates</button>
+      </form><p class="muted">Intervals are calculated only between dates you entered; they do not determine whether a cycle is healthy.</p>${cycleHistory}</div>
+    </div>
+    <div class="panel" style="margin-top:16px">${panelHead('Ask the local health-information guide','Evidence retrieval from a small, cited library; not generative AI')}<form id="womensGuideForm" onsubmit="askWomensHealthGuide(event)">
+      <div class="field"><label for="whQuestion">What would you like general information about?</label><textarea id="whQuestion" name="question" maxlength="500" placeholder="For example: What should I ask my clinician about PCOS?" required></textarea></div>
+      <label class="health-consent-choice"><input type="checkbox" name="includeMoodHistory"> Include my latest mood check-ins in a simple reflection</label>
+      ${reportOptions ? `<fieldset class="health-report-choice"><legend>Select any of your PDF reports to search locally</legend>${reportOptions}</fieldset>` : '<p class="muted">No text PDF reports are available. Uploads are never included unless you explicitly select them here.</p>'}
+      <div id="whGuideError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Get source-linked information</button>
+    </form>${answer}</div>
+    <div class="dashboard-grid" style="margin-top:16px"><div class="panel">${panelHead('Health facts','General information, not personal predictions')}<ul class="health-facts">${state.womensHealth.funFacts.map(fact=>`<li>${escapeHtml(fact)}</li>`).join('')}</ul></div><div class="panel">${panelHead('Support and safety','Your wellbeing matters')}<p>If you feel unsafe or might harm yourself, contact local emergency services or a trusted person now. If you are in India, call 112 for emergencies or Tele-MANAS at 14416 for mental-health support.</p><p>If mood concerns persist, worsen, or affect daily life, consider talking with a qualified clinician.</p></div></div>
+    <div class="panel" style="margin-top:16px">${panelHead('Your control','Your health logs belong to your patient account')}<p>Disabling or deleting removes the mood and cycle logs from this section. Report files are separate and can be managed under Health records.</p><button class="btn btn-outline" onclick="deleteWomensHealthData()">Delete my Women’s Health data and disable</button></div>`;
+}
+
+async function enableWomensHealth() {
+  try {
+    await apiRequest('/api/womens-health/consent',{method:'POST',body:JSON.stringify({enabled:true})});
+    await refreshBackendData();
+    renderAll(); buildNav(); go('womens-health');
+    toast('Your optional Women’s Health section is enabled.');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function saveWomensMood(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = document.getElementById('whMoodError');
+  error.textContent = '';
+  const symptoms = [...form.querySelectorAll('input[name="symptoms"]:checked')].map(input=>input.value);
+  try {
+    await apiRequest('/api/womens-health/mood',{method:'POST',body:JSON.stringify({
+      entryDate:form.elements.entryDate.value,
+      mood:form.elements.mood.value,
+      stressLevel:Number(form.elements.stressLevel.value),
+      sleepHours:Number(form.elements.sleepHours.value),
+      energyLevel:Number(form.elements.energyLevel.value),
+      symptoms
+    })});
+    await refreshBackendData();
+    renderAll(); go('womens-health');
+    toast('Private mood check-in saved.');
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function saveWomensCycle(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = document.getElementById('whCycleError');
+  error.textContent = '';
+  try {
+    await apiRequest('/api/womens-health/cycle',{method:'POST',body:JSON.stringify({
+      startDate:form.elements.startDate.value,
+      endDate:form.elements.endDate.value || null
+    })});
+    await refreshBackendData();
+    renderAll(); go('womens-health');
+    toast('Private period dates saved.');
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function askWomensHealthGuide(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = document.getElementById('whGuideError');
+  error.textContent = '';
+  const reportIds = [...form.querySelectorAll('input[name="reportIds"]:checked')].map(input=>Number(input.value));
+  try {
+    state.womensHealthAnswer = await apiRequest('/api/womens-health/guide',{method:'POST',body:JSON.stringify({
+      question:form.elements.question.value,
+      includeMoodHistory:form.elements.includeMoodHistory.checked,
+      includeReports:reportIds.length > 0,
+      reportIds
+    })});
+    renderAll(); go('womens-health');
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function deleteWomensHealthData() {
+  if (!window.confirm('Delete all Women’s Health mood and period-date logs and disable this section? This cannot be undone.')) return;
+  try {
+    await apiRequest('/api/womens-health/data',{method:'DELETE'});
+    await refreshBackendData();
+    renderAll(); buildNav(); go('dashboard');
+    toast('Women’s Health logs deleted and section disabled.');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 function renderPrescriptions() {
   const rows = state.prescriptions.map(prescription => `<tr>${state.role==='admin'?`<td>${escapeHtml(prescription.patient_name)}</td>`:''}<td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status ${prescription.status.toLowerCase()}">${escapeHtml(prescription.status)}</span></td>${state.role==='admin'?`<td><button class="link-btn" onclick="editPrescription(${Number(prescription.id)})">Edit</button></td>`:''}</tr>`).join('');
   const pendingRows = state.role === 'admin' ? state.pendingPrescriptions.map(prescription => `<tr><td>${escapeHtml(prescription.patient_name)}<small>${escapeHtml(prescription.patient_email)}</small></td><td>${escapeHtml(prescription.medication)}</td><td>${escapeHtml(prescription.doctor_name || 'Care team')}</td><td>${escapeHtml(prescription.directions)}</td><td>${Number(prescription.refills)}</td><td><span class="status pending">Awaiting registration</span></td><td>—</td></tr>`).join('') : '';
@@ -606,7 +789,7 @@ function renderBilling() {
 function renderStaff() {
   if (state.role !== 'admin') return unavailablePage('Staff management','Administrator access is required.','Unavailable');
   const rows = apiDoctors.map(doctor=>`<tr><td>${escapeHtml(doctor.name)}</td><td>${escapeHtml(doctor.specialty)}</td><td>${escapeHtml(doctor.experience || 'Not specified')}</td><td><span class="status ${doctor.available?'active':'pending'}">${doctor.available?'Available':'Unavailable'}</span></td><td><button class="btn btn-light btn-sm" onclick="toggleDoctorAvailability(${Number(doctor.id)},${doctor.available?0:1})">${doctor.available?'Set unavailable':'Set available'}</button></td></tr>`).join('');
-  return `<div class="welcome"><div><h1>Staff management</h1><p>Add doctors for ${escapeHtml(state.hospital?.name||'your hospital')} and control their patient-facing availability.</p></div></div><div class="panel" style="margin-bottom:16px"><h2>Add a doctor</h2><form id="doctorForm" onsubmit="createDoctor(event)"><div class="field"><label for="doctorName">Doctor name</label><input id="doctorName" name="name" maxlength="100" required></div><div class="field"><label for="doctorSpecialty">Specialty / department</label><input id="doctorSpecialty" name="specialty" maxlength="80" required></div><div class="field"><label for="doctorExperience">Experience (optional)</label><input id="doctorExperience" name="experience" maxlength="80"></div><div id="doctorError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Add doctor</button></form></div><div class="panel">${panelHead('Clinical staff','Only doctors assigned to this hospital are listed')}${rows?`<div class="table-wrap"><table><thead><tr><th>Name</th><th>Department</th><th>Experience</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty-state">No doctors are registered for this hospital.</div>'}</div>`;
+  return `<div class="welcome"><div><h1>Staff management</h1><p>Add doctors for ${escapeHtml(state.hospital?.name||'your hospital')} and control their patient-facing availability.</p></div></div><div class="panel" style="margin-bottom:16px"><h2>Add a doctor</h2><form id="doctorForm" onsubmit="createDoctor(event)"><div class="field"><label for="doctorName">Doctor name</label><input id="doctorName" name="name" minlength="3" maxlength="100" required></div><div class="field"><label for="doctorSpecialty">Specialty / department</label><input id="doctorSpecialty" name="specialty" minlength="2" maxlength="80" required></div><div class="field"><label for="doctorExperience">Experience (optional)</label><input id="doctorExperience" name="experience" maxlength="80"></div><div id="doctorError" class="error" role="alert"></div><button class="btn btn-primary" type="submit">Add doctor</button></form></div><div class="panel">${panelHead('Clinical staff','Only doctors assigned to this hospital are listed')}${rows?`<div class="table-wrap"><table><thead><tr><th>Name</th><th>Department</th><th>Experience</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty-state">No doctors are registered for this hospital.</div>'}</div>`;
 }
 
 function renderReports() {
@@ -614,7 +797,7 @@ function renderReports() {
   const totals = state.analytics?.totals || {};
   const rows = state.analytics?.recentAppointments || [];
   const sharedReports = state.adminReports.map(report=>`<tr><td>${escapeHtml(report.patient_name)}<small>${escapeHtml(report.patient_email)}</small></td><td>${escapeHtml(report.original_name)}<small>${escapeHtml(report.mime_type)} · ${formatFileSize(report.file_size)}</small></td><td>${escapeHtml(formatAppointmentDate(report.created_at))}</td><td><button class="link-btn" onclick="downloadReport(${Number(report.id)})">Download shared report</button></td></tr>`).join('');
-  return `<div class="welcome"><div><h1>Reports & analytics</h1><p>Live operational totals for ${escapeHtml(state.hospital?.name || 'your hospital')}.</p></div><button class="btn btn-primary" onclick="exportOperationalReport()">↓ Export CSV</button></div><div class="stats">${stat('Patients',String(totals.patients||0),'♙','Registered accounts')}${stat('Appointments',String(totals.appointments||0),'▦','All requests')}${stat('Due invoices',String(totals.dueInvoices||0),'＄','Awaiting demo payment')}${stat('Shared medical reports',String(totals.uploadedReports||0),'▤','Shared by patients')}</div><div class="panel">${panelHead('Recent appointments','Most recent 100 records')}${rows.length?appointmentsTable(rows.map(appointment=>({id:appointment.id,name:appointment.patient_name,dept:`${appointment.specialty} · ${appointment.doctor_name}`,date:formatAppointmentDate(appointment.appointment_at),status:appointment.status,type:appointment.reason})),true):'<div class="empty-state">No appointment data to report.</div>'}</div><div class="panel" style="margin-top:16px">${panelHead('Patient-shared medical history','Patients control access; only files explicitly shared with this hospital appear here')}${sharedReports?`<div class="table-wrap"><table><thead><tr><th>Patient</th><th>Report</th><th>Uploaded</th><th>Access</th></tr></thead><tbody>${sharedReports}</tbody></table></div>`:'<div class="empty-state"><strong>No shared reports</strong><p>Patient-shared medical history will appear here.</p></div>'}</div>`;
+  return `<div class="welcome"><div><h1>Reports & analytics</h1><p>Live operational totals for ${escapeHtml(state.hospital?.name || 'your hospital')}.</p></div><button class="btn btn-primary" onclick="exportOperationalReport()">↓ Export CSV</button></div><div class="stats">${stat('Patients',String(totals.patients||0),'♙','Registered accounts')}${stat('Appointments',String(totals.appointments||0),'▦','All requests')}${stat('Due invoices',String(totals.dueInvoices||0),'＄','Awaiting demo payment')}${stat('Shared medical reports',String(totals.uploadedReports||0),'▤','Shared by patients')}</div><div class="panel">${panelHead('Recent appointments','Most recent 100 records')}${rows.length?appointmentsTable(rows.map(appointment=>({id:appointment.id,name:appointment.patient_name,doctorName:appointment.doctor_name,dept:appointment.specialty,date:formatAppointmentDate(appointment.appointment_at),status:appointment.status,type:appointment.reason})),true):'<div class="empty-state">No appointment data to report.</div>'}</div><div class="panel" style="margin-top:16px">${panelHead('Patient-shared medical history','Patients control access; only files explicitly shared with this hospital appear here')}${sharedReports?`<div class="table-wrap"><table><thead><tr><th>Patient</th><th>Report</th><th>Uploaded</th><th>Access</th></tr></thead><tbody>${sharedReports}</tbody></table></div>`:'<div class="empty-state"><strong>No shared reports</strong><p>Patient-shared medical history will appear here.</p></div>'}</div>`;
 }
 
 function renderSettings() {
@@ -707,7 +890,7 @@ async function uploadReport(event) {
     await refreshBackendData();
     renderAll();
     go('ai');
-    toast('Report uploaded. View it and its overview usage under Reports & AI.');
+    toast('Report uploaded. Open Reports & AI and click “Create local overview” when you’re ready.');
   } catch (err) {
     error.textContent = err.message || 'Could not upload the report.';
   } finally {
@@ -731,6 +914,10 @@ async function setReportSharing(id,shared) {
 
 async function summarizeReport(id) {
   const resultPanel=document.getElementById('reportSummary');
+  if (!resultPanel) {
+    toast('Open Reports & AI before creating a report overview.');
+    return;
+  }
   resultPanel.innerHTML='<div class="notice">Extracting selectable PDF text locally…</div>';
   try {
     const result=await apiRequest(`/api/reports/${Number(id)}/summary`,{method:'POST',body:'{}'});
@@ -738,10 +925,12 @@ async function summarizeReport(id) {
     renderAll();
     go('ai');
     const updatedPanel=document.getElementById('reportSummary');
+    if (!updatedPanel) throw new Error('The overview was created, but the result panel could not be displayed. Reopen Reports & AI.');
     updatedPanel.innerHTML=`<div class="notice report-summary" role="status"><strong>Local document overview</strong><ul>${result.summary.map(sentence=>`<li>${escapeHtml(sentence)}</li>`).join('')}</ul><p>${escapeHtml(result.notice)} Read ${Number(result.pagesRead)} of ${Number(result.totalPages)} pages. Overview usage for this report: ${Number(result.usageCount)}. No file was sent to an external AI service.</p></div>`;
   } catch(err) {
     const currentPanel=document.getElementById('reportSummary');
     if(currentPanel) currentPanel.innerHTML=`<div class="notice" role="alert">${escapeHtml(err.message)}</div>`;
+    else toast(err.message || 'Could not display the report overview.');
   }
 }
 

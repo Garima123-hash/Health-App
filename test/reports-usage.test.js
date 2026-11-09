@@ -14,7 +14,7 @@ test('local report overviews extract text and record usage only for the owner', 
   ], { type: 'application/pdf' }), 'test-report.pdf');
   form.append('shareWithHospital', 'false');
   const uploaded = await request(baseUrl, '/api/reports', {
-    cookie: owner.cookie,
+    token: owner.token,
     method: 'POST',
     body: form
   });
@@ -22,7 +22,7 @@ test('local report overviews extract text and record usage only for the owner', 
   const reportId = uploaded.body.report.id;
 
   const firstOverview = await request(baseUrl, `/api/reports/${reportId}/summary`, {
-    cookie: owner.cookie,
+    token: owner.token,
     method: 'POST',
     body: JSON.stringify({})
   });
@@ -33,20 +33,20 @@ test('local report overviews extract text and record usage only for the owner', 
   assert.match(firstOverview.body.notice, /not AI/);
 
   const secondOverview = await request(baseUrl, `/api/reports/${reportId}/summary`, {
-    cookie: owner.cookie,
+    token: owner.token,
     method: 'POST',
     body: JSON.stringify({})
   });
   assert.equal(secondOverview.body.usageCount, 2);
-  const reportList = await request(baseUrl, '/api/reports', { cookie: owner.cookie });
+  const reportList = await request(baseUrl, '/api/reports', { token: owner.token });
   assert.equal(reportList.body.reports[0].summary_count, 2);
   assert.equal(reportList.body.reports[0].shared_with_hospital, 0);
 
   const otherPatientView = await request(baseUrl, `/api/reports/${reportId}/summary`, {
-    cookie: otherPatient.cookie,
+    token: otherPatient.token,
     method: 'POST',
     body: JSON.stringify({})
   });
   assert.equal(otherPatientView.response.status, 404);
-  assert.deepEqual((await request(baseUrl, '/api/reports', { cookie: otherPatient.cookie })).body.reports, []);
+  assert.deepEqual((await request(baseUrl, '/api/reports', { token: otherPatient.token })).body.reports, []);
 });
