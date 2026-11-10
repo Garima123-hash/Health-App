@@ -423,13 +423,29 @@ const starterDoctors = [
 
 async function ensureHospital(name, city = '') {
   const nameKey = name.toLocaleLowerCase('en');
-  const existing = await col('hospitals').findOne({ name_key: nameKey });
+  let existing = await col('hospitals').findOne({
+    $or: [{ name_key: nameKey }, { name: { $regex: new RegExp(`^${name}$`, 'i') } }]
+  });
   if (existing) {
-    if (!existing.city && city) await col('hospitals').updateOne({ id: existing.id }, { $set: { city } });
+    const updates = {};
+    if (!existing.id) updates.id = await db.nextId('hospitals');
+    if (!existing.name_key) updates.name_key = nameKey;
+    if (!existing.city && city) updates.city = city;
+    if (Object.keys(updates).length > 0) {
+      await col('hospitals').updateOne({ _id: existing._id }, { $set: updates });
+      existing = { ...existing, ...updates };
+    }
     return existing;
   }
-  const hospital = { id: await db.nextId('hospitals'), name, name_key: nameKey, city, phone: '', created_at: nowIso() };
-  await col('hospitals').insertOne(hospital);
+  const hospital = { id: await db.nextId('hospitals'), name, name_key: nameKey, city, phone: '1-800-555-0100', created_at: nowIso() };
+  try {
+    await col('hospitals').insertOne(hospital);
+  } catch (error) {
+    if (error.code === 11000) {
+      return (await col('hospitals').findOne({ $or: [{ name_key: nameKey }, { name }] })) || hospital;
+    }
+    throw error;
+  }
   return hospital;
 }
 
