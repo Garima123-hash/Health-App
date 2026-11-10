@@ -33,6 +33,20 @@ const knowledge = [
     url: 'https://womenshealth.gov/a-z-topics/polycystic-ovary-syndrome',
     terms: ['mood', 'stress', 'sleep', 'energy', 'anxiety', 'sad', 'low', 'mental'],
     text: 'Mood check-ins can help you notice what you want to discuss with a trusted person or clinician. They are not a mental-health assessment and cannot determine the cause of a mood change. Seek professional support if mood concerns persist, worsen, or interfere with daily life.'
+  },
+  {
+    id: 'pregnancy-overview',
+    title: 'Pregnancy and antenatal care',
+    url: 'https://www.who.int/health-topics/pregnancy',
+    terms: ['pregnancy', 'pregnant', 'antenatal', 'prenatal', 'maternal', 'obstetric', 'midwife'],
+    text: 'Pregnancy care is individual. Arrange regular antenatal care with a qualified clinician or midwife, and discuss medicines, supplements, vaccinations, symptoms, and questions with them. This guide cannot assess a pregnancy or replace urgent or routine medical care.'
+  },
+  {
+    id: 'pregnancy-warning-signs',
+    title: 'When to contact a pregnancy-care professional',
+    url: 'https://www.who.int/health-topics/pregnancy',
+    terms: ['pregnancy', 'pregnant', 'bleeding', 'pain', 'urgent', 'emergency', 'warning', 'symptom'],
+    text: 'New, severe, or worrying symptoms during pregnancy should be discussed promptly with a qualified pregnancy-care professional. If there is heavy bleeding, severe pain, fainting, trouble breathing, or another emergency, contact local emergency services or seek urgent care.'
   }
 ];
 
@@ -48,17 +62,29 @@ function tokens(value) {
   return new Set(String(value || '').toLowerCase().match(/[a-z0-9]{3,}/g)?.filter(word => !stopWords.has(word)) || []);
 }
 
-function retrieveKnowledge(question) {
+function retrieveKnowledge(question, documents = []) {
   const query = tokens(question);
-  return knowledge
+  const uploadedKnowledge = documents.flatMap(document => {
+    const sentences = String(document.text || '').match(/[^.!?]+[.!?]?/g) || [];
+    return sentences
+      .map(sentence => sentence.trim())
+      .filter(sentence => sentence.length > 35)
+      .map((text, index) => ({
+        id: `admin-doc-${document.id}-${index}`,
+        title: document.title,
+        url: '',
+        text
+      }));
+  });
+  return [...knowledge, ...uploadedKnowledge]
     .map(item => {
-      const terms = new Set([...tokens(item.text), ...item.terms]);
+      const terms = new Set([...tokens(item.text), ...(item.terms || [])]);
       const matches = [...query].filter(word => terms.has(word)).length;
       return { ...item, matches };
     })
     .filter(item => item.matches > 0)
     .sort((a, b) => b.matches - a.matches || a.id.localeCompare(b.id))
-    .slice(0, 3)
+    .slice(0, 5)
     .map(({ id, title, url, text }) => ({ id, title, url, text }));
 }
 

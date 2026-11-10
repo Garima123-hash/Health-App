@@ -111,11 +111,11 @@ async function request(baseUrl, route, { token, ...options } = {}) {
   return { response, body, token: body.accessToken };
 }
 
-async function registerPatient(baseUrl, hospitalId, name = 'Test Patient') {
+async function registerPatient(baseUrl, hospitalId, name = 'Test Patient', selfIdentifiesAsWoman = false) {
   const email = `patient-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.invalid`;
   const { response, body, token } = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ name, email, password: 'Test-Patient-Password-2026!', hospitalId, age: 38 })
+    body: JSON.stringify({ name, email, password: 'Test-Patient-Password-2026!', hospitalId, age: 38, selfIdentifiesAsWoman })
   });
   assert.equal(response.status, 201, JSON.stringify(body));
   return { user: body.user, email, token };

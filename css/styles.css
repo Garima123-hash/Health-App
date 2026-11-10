@@ -489,6 +489,7 @@ button { cursor: pointer; }
   flex-shrink: 0;
 }
 #navItems { flex: 1 1 auto; }
+<<<<<<< Updated upstream
 .nav-item {
   display: flex;
   align-items: center;
@@ -1272,3 +1273,56 @@ tbody tr:hover { background: #fbfef9; }
   .float-card { padding: 10px; }
   .float-value { font-size: 16px; }
 }
+=======
+@media (max-height: 500px) { .help-card { display: none; } .sidebar .brand { padding-bottom: 12px; } }
+.auth-modal { max-height: calc(100vh - 36px); overflow-y: auto; }
+.check-row { display:flex; align-items:center; gap:9px; margin:14px 0; color:var(--ink); font-size:12px; font-weight:700; }
+.check-row input { accent-color:var(--green); }
+.record-actions { display:flex; flex-wrap:wrap; gap:4px 10px; }
+.record-summary ul { padding-left:20px; }
+.record-summary li { margin:8px 0; }
+.faq-list details { padding:16px 4px; border-bottom:1px solid var(--line); }
+.faq-list details:last-child { border-bottom:0; }
+.faq-list summary { color:var(--ink); cursor:pointer; font-weight:800; }
+.faq-list details p { margin:10px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+.health-symptoms,.health-report-choice { border:1px solid var(--line); border-radius:12px; padding:12px; margin:14px 0; }
+.health-symptoms legend,.health-report-choice legend { color:#38574c; font-size:12px; font-weight:800; padding:0 5px; }
+.health-symptoms { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.health-symptoms label,.health-consent-choice { display:flex; align-items:flex-start; gap:8px; color:#526a60; font-size:12px; line-height:1.5; }
+.health-symptoms input,.health-consent-choice input { accent-color:var(--green); flex:0 0 auto; margin-top:3px; }
+.health-consent-choice { margin:12px 0; }
+.health-consent-choice small { color:var(--muted); }
+.health-answer { margin-top:18px; padding:18px; border-radius:14px; background:var(--mint); border:1px solid var(--line); color:#526a60; font-size:13px; line-height:1.7; overflow-wrap:anywhere; }
+.health-answer h3,.health-answer h4 { color:var(--ink); margin:0 0 10px; }
+.health-answer p { white-space:normal; }
+.health-answer a { color:var(--green-dark); font-weight:750; }
+.health-facts { padding-left:20px; color:#526a60; font-size:13px; line-height:1.75; }
+.health-facts li { margin:8px 0; }
+.muted { color:var(--muted); font-size:12px; line-height:1.7; }
+@media(max-width:760px) { .health-symptoms { grid-template-columns:1fr; } }
+
+.app.women-theme {
+  --green:#a45180;--green-dark:#71365f;--green-soft:#f5e8f0;--mint:#fcf5fa;
+  --ink:#39283a;--muted:#806f80;--line:#eadce8;
+  background:#fbf7fb;
+}
+.women-theme .sidebar,.women-theme .app-top,.women-theme .panel,.women-theme .stat-card {
+  background:#fffafd;border-color:var(--line);
+}
+.women-theme .brand-mark { background:linear-gradient(145deg,#b56893,#8665a9);box-shadow:0 8px 18px #a4518038; }
+.women-theme .btn-primary { background:linear-gradient(135deg,#a45180,#8063a7);box-shadow:0 8px 16px #a4518025; }
+.women-theme .btn-primary:hover { background:#71365f; }
+.women-theme .nav-item.active { background:#f5e8f0;color:#71365f; }
+.women-theme .help-card,.women-theme .notice { background:#fbf0f7;border-color:#ecd8e8;color:#714f6c; }
+.women-theme .stat-icon,.women-theme .patient-avatar,.women-theme .topic-icon {
+  background:#f5e8f0;color:#8f4674;
+}
+.women-dashboard { display:flex;flex-direction:column;gap:16px; }
+.women-dashboard .women-topics { margin:0; }
+.women-dashboard .women-topics .panel { padding:24px; }
+.women-dashboard .women-topics h2 { margin:13px 0 8px;font-size:17px; }
+.women-dashboard .women-topics p { color:var(--muted);font-size:13px;line-height:1.7;min-height:44px; }
+.topic-icon { width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:21px; }
+.women-appointments { min-width:0; }
+.women-dashboard .health-answer { background:#fffafd;border-color:var(--line); }
+>>>>>>> Stashed changes
