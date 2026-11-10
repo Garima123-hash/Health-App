@@ -5,6 +5,10 @@ const crypto = require('node:crypto');
 const multer = require('multer');
 const { UPLOAD_DIR } = require('../config');
 
+// Multer diskStorage does not create its destination directory automatically.
+// Ensure the directory exists on fresh Render instances before accepting uploads.
+require('node:fs').mkdirSync(UPLOAD_DIR, { recursive: true });
+
 const allowedReportTypes = {
   '.pdf': 'application/pdf',
   '.jpg': 'image/jpeg',
