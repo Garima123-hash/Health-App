@@ -21,13 +21,47 @@ if (process.env.NODE_ENV === 'production' && (!configuredJwtSecret || Buffer.byt
   throw new Error('Set JWT_SECRET to a random secret of at least 32 bytes before running in production.');
 }
 
-const starterDoctors = [
-  ['Dr. Ananya Mehta', 'Cardiology', '12 years experience'],
-  ['Dr. Rahul Kapoor', 'General Medicine', '9 years experience'],
-  ['Dr. Priya Nair', 'Dermatology', '8 years experience'],
-  ['Dr. Vikram Rao', 'Orthopaedics', '15 years experience'],
-  ['Dr. Sana Khan', 'Paediatrics', '10 years experience'],
-  ['Dr. Arjun Das', 'Neurology', '11 years experience']
+const starterDoctorRosters = [
+  [
+    ['Dr. Ananya Mehta', 'Cardiology', '12 years experience'],
+    ['Dr. Rahul Kapoor', 'General Medicine', '9 years experience'],
+    ['Dr. Priya Nair', 'Dermatology', '8 years experience'],
+    ['Dr. Ishaan Verma', 'Neurology', '10 years experience'],
+    ['Dr. Kavita Rao', 'Paediatrics', '14 years experience'],
+    ['Dr. Nikhil Shah', 'Orthopaedics', '11 years experience']
+  ],
+  [
+    ['Dr. Vikram Rao', 'Orthopaedics', '15 years experience'],
+    ['Dr. Sana Khan', 'Paediatrics', '10 years experience'],
+    ['Dr. Arjun Das', 'Neurology', '11 years experience'],
+    ['Dr. Leena Iyer', 'Cardiology', '9 years experience'],
+    ['Dr. Kabir Malhotra', 'General Medicine', '13 years experience'],
+    ['Dr. Aisha Menon', 'Dermatology', '8 years experience']
+  ],
+  [
+    ['Dr. Meera Joshi', 'General Medicine', '16 years experience'],
+    ['Dr. Aditya Sen', 'Cardiology', '12 years experience'],
+    ['Dr. Pooja Nambiar', 'Dermatology', '9 years experience'],
+    ['Dr. Farhan Ali', 'Neurology', '14 years experience'],
+    ['Dr. Tara Kapoor', 'Paediatrics', '7 years experience'],
+    ['Dr. Rohan Bhat', 'Orthopaedics', '10 years experience']
+  ],
+  [
+    ['Dr. Neha Kulkarni', 'Cardiology', '18 years experience'],
+    ['Dr. Dev Patel', 'General Medicine', '11 years experience'],
+    ['Dr. Simran Gill', 'Dermatology', '12 years experience'],
+    ['Dr. Karan Sethi', 'Orthopaedics', '13 years experience'],
+    ['Dr. Zoya Hussain', 'Paediatrics', '9 years experience'],
+    ['Dr. Manav Reddy', 'Neurology', '15 years experience']
+  ],
+  [
+    ['Dr. Riya Chatterjee', 'Neurology', '12 years experience'],
+    ['Dr. Arnav Bose', 'Cardiology', '10 years experience'],
+    ['Dr. Naina Desai', 'General Medicine', '14 years experience'],
+    ['Dr. Samar Khanna', 'Dermatology', '11 years experience'],
+    ['Dr. Esha Thomas', 'Orthopaedics', '8 years experience'],
+    ['Dr. Yash Sood', 'Paediatrics', '13 years experience']
+  ]
 ];
 
 module.exports = {
@@ -51,6 +85,5 @@ module.exports = {
     path: '/api/auth',
     maxAge: 30 * 24 * 60 * 60 * 1000
   },
-  starterDoctors
+  starterDoctorRosters
 };
-

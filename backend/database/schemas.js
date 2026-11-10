@@ -11,7 +11,9 @@ const collectionSchemas = {
     required: ['id', 'name', 'email', 'password_hash', 'role', 'created_at'],
     properties: {
       id: { bsonType: ['int', 'long', 'double'] }, name: { bsonType: 'string' }, email: { bsonType: 'string' },
-      password_hash: { bsonType: 'string' }, role: { enum: ['patient', 'admin'] }, age: { bsonType: ['int', 'long', 'double', 'null'] }
+      password_hash: { bsonType: 'string' }, role: { enum: ['patient', 'admin'] }, age: { bsonType: ['int', 'long', 'double', 'null'] },
+      gender: { enum: ['female', 'male', 'non_binary', 'prefer_not_to_say', 'unspecified'] },
+      is_super_admin: { bsonType: 'bool' }
     }
   },
   doctors: {
@@ -35,6 +37,36 @@ const collectionSchemas = {
       id: { bsonType: ['int', 'long', 'double'] }, user_id: { bsonType: ['int', 'long', 'double'] },
       stored_name: { bsonType: 'string' }, mime_type: { bsonType: 'string' }, file_size: { bsonType: ['int', 'long', 'double'] },
       shared_with_hospital: { bsonType: 'bool' }, summary_count: { bsonType: ['int', 'long', 'double'] }
+    }
+  },
+  report_knowledge: {
+    bsonType: 'object',
+    required: ['id', 'title', 'url', 'terms', 'text', 'active', 'created_at', 'updated_at'],
+    properties: {
+      id: { bsonType: 'string' },
+      title: { bsonType: 'string' },
+      url: { bsonType: 'string' },
+      terms: { bsonType: 'array', items: { bsonType: 'string' } },
+      text: { bsonType: 'string' },
+      active: { bsonType: 'bool' },
+      created_at: { bsonType: 'string' },
+      updated_at: { bsonType: 'string' }
+    }
+  },
+  medical_record_audits: {
+    bsonType: 'object',
+    required: ['id', 'report_id', 'user_id', 'event_type', 'status', 'actor_role', 'created_at'],
+    properties: {
+      id: { bsonType: ['int', 'long', 'double'] },
+      report_id: { bsonType: ['int', 'long', 'double'] },
+      user_id: { bsonType: ['int', 'long', 'double'] },
+      event_type: { enum: ['sealed', 'verification'] },
+      status: { enum: ['sealed', 'verified', 'file-missing', 'file-modified', 'anchor-missing', 'anchor-mismatch', 'ledger-invalid'] },
+      actor_role: { enum: ['patient', 'admin'] },
+      block_index: { bsonType: ['int', 'long', 'double', 'null'] },
+      audit_hash: { bsonType: 'string' },
+      provider: { bsonType: 'string' },
+      created_at: { bsonType: 'string' }
     }
   },
   womens_health_mood_entries: {
@@ -109,6 +141,8 @@ const indexDefinitions = {
   doctors: [[{ id: 1 }, { unique: true }], [{ hospital_id: 1, name_key: 1 }, {}], [{ hospital_id: 1, available: 1, name: 1 }, {}]],
   appointments: [[{ id: 1 }, { unique: true }], [{ user_id: 1, appointment_at: 1 }, {}], [{ doctor_id: 1, appointment_at: 1 }, {}]],
   reports: [[{ id: 1 }, { unique: true }], [{ user_id: 1, created_at: -1 }, {}], [{ user_id: 1, shared_with_hospital: 1 }, {}], [{ stored_name: 1 }, { unique: true }]],
+  report_knowledge: [[{ id: 1 }, { unique: true }], [{ active: 1 }, {}]],
+  medical_record_audits: [[{ id: 1 }, { unique: true }], [{ report_id: 1, created_at: -1 }, {}], [{ user_id: 1, report_id: 1, created_at: -1 }, {}]],
   womens_health_mood_entries: [[{ id: 1 }, { unique: true }], [{ user_id: 1, entry_date: -1 }, {}], [{ user_id: 1, entry_date: 1 }, { unique: true }]],
   womens_health_cycle_entries: [[{ id: 1 }, { unique: true }], [{ user_id: 1, start_date: -1 }, {}], [{ user_id: 1, start_date: 1 }, { unique: true }]],
   prescriptions: [[{ id: 1 }, { unique: true }], [{ user_id: 1, created_at: -1 }, {}], [{ source_pending_id: 1 }, { unique: true, sparse: true }]],
@@ -123,4 +157,3 @@ module.exports = {
   collectionSchemas,
   indexDefinitions
 };
-

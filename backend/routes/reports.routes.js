@@ -1,9 +1,9 @@
 'use strict';
 
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { col, getDb } = require('../database/connection');
 const { UPLOAD_DIR } = require('../config');
 const {
@@ -16,9 +16,41 @@ const {
 const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
 const { reportUpload } = require('../middleware/upload.middleware');
 const { HealthcareBlockchain } = require('../services/blockchain.service');
+const {
+  classifyIntegrityStatus,
+  hashAuditEvent,
+  hashFile,
+  medicalRecordLedger
+} = require('../services/medical-record-ledger.service');
 const { extractReportSentences } = require('../services/pdf.service');
+const { ReportSummaryError, summarizeReportText } = require('../services/report-summary.service');
 
 const router = express.Router();
+
+const reportSummaryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 12,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+async function reportFilterForHospital(user) {
+  if (user.is_super_admin) return {};
+  const patients = await col('users').find(
+    { role: 'patient', hospital_id: user.hospital_id },
+    { projection: { _id: 1, id: 1, email: 1 } }
+  ).toArray();
+  const patientIds = patients.flatMap(patient => [
+    patient.id,
+    String(patient.id),
+    ...(patient._id ? [String(patient._id)] : [])
+  ]);
+  const conditions = [];
+  if (patientIds.length) conditions.push({ user_id: { $in: patientIds } });
+  const emails = patients.map(patient => patient.email?.toLowerCase()).filter(Boolean);
+  if (emails.length) conditions.push({ patient_email: { $in: emails } });
+  return conditions.length ? { $or: conditions } : { _id: { $exists: false } };
+}
 
 router.get('/', requireAuth, asyncRoute(async (req, res) => {
   const isAdmin = req.user.role === 'admin';
@@ -31,13 +63,37 @@ router.get('/', requireAuth, asyncRoute(async (req, res) => {
   } else if (req.query.patientId) {
     const pId = idFrom(req.query.patientId) || Number(req.query.patientId);
     const targetUser = await col('users').findOne({ id: pId });
+    if (!targetUser || (isAdmin && !req.user.is_super_admin && targetUser.hospital_id !== req.user.hospital_id)) {
+      return res.status(404).json({ error: 'Patient not found.' });
+    }
     const orCond = [{ user_id: pId }, { user_id: String(pId) }];
     if (targetUser?.email) orCond.push({ patient_email: targetUser.email.toLowerCase() });
     if (targetUser?._id) orCond.push({ user_id: String(targetUser._id) });
     filter = { $or: orCond };
+  } else if (isAdmin) {
+    filter = await reportFilterForHospital(req.user);
   }
 
   const reports = await col('reports').find(filter).sort({ created_at: -1 }).toArray();
+  const audits = reports.length
+    ? await col('medical_record_audits').aggregate([
+      { $match: { report_id: { $in: reports.map(report => report.id) } } },
+      { $sort: { created_at: -1 } },
+      { $group: {
+        _id: '$report_id',
+        events: { $push: {
+          event_type: '$event_type',
+          status: '$status',
+          actor_role: '$actor_role',
+          block_index: '$block_index',
+          provider: '$provider',
+          created_at: '$created_at'
+        } }
+      } },
+      { $project: { events: { $slice: ['$events', 20] } } }
+    ]).toArray()
+    : [];
+  const auditsByReport = new Map(audits.map(item => [String(item._id), item.events]));
   const users = await col('users').find({ role: 'patient' }).toArray();
   const userMap = new Map();
   for (const u of users) {
@@ -65,6 +121,11 @@ router.get('/', requireAuth, asyncRoute(async (req, res) => {
         category: r.category || 'Diagnostic Report',
         documentHash: r.document_hash || '',
         blockIndex: r.block_index || 1,
+        integrityStatus: auditsByReport.get(String(r.id))?.[0]?.status || 'sealed',
+        integrityCheckedAt: auditsByReport.get(String(r.id))?.[0]?.event_type === 'verification'
+          ? auditsByReport.get(String(r.id))[0].created_at
+          : null,
+        auditHistory: auditsByReport.get(String(r.id)) || [],
         shared_with_hospital: r.shared_with_hospital ? 1 : 0,
         created_at: r.created_at
       };
@@ -72,8 +133,9 @@ router.get('/', requireAuth, asyncRoute(async (req, res) => {
   });
 }));
 
-router.get('/admin', requireAdmin, asyncRoute(async (_req, res) => {
-  const reports = await col('reports').find({}).sort({ created_at: -1 }).toArray();
+router.get('/admin', requireAdmin, asyncRoute(async (req, res) => {
+  const filter = await reportFilterForHospital(req.user);
+  const reports = await col('reports').find(filter).sort({ created_at: -1 }).toArray();
   const users = await col('users').find({ role: 'patient' }).toArray();
   const userMap = new Map(users.map(u => [u.id, u]));
 
@@ -96,7 +158,7 @@ const handleReportUpload = async (req, res, next) => {
 
   try {
     const fileBuffer = fs.readFileSync(req.file.path);
-    const documentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+    const documentHash = hashFile(fileBuffer);
 
     const isAdmin = req.user.role === 'admin';
     let targetUserId = req.user.id;
@@ -113,12 +175,18 @@ const handleReportUpload = async (req, res, next) => {
       if (patientId) {
         const patient = await col('users').findOne({ id: patientId });
         if (!patient) return res.status(400).json({ error: 'Specified patient was not found.' });
+        if (!req.user.is_super_admin && patient.hospital_id !== req.user.hospital_id) {
+          return res.status(403).json({ error: 'You can only upload reports for patients at your hospital.' });
+        }
         targetUserId = patient.id;
         targetPatientName = patient.name;
         targetPatientEmail = patient.email;
       } else if (apptId) {
         const appt = await col('appointments').findOne({ id: apptId });
         if (appt) {
+          if (!req.user.is_super_admin && appt.hospital_id !== req.user.hospital_id) {
+            return res.status(403).json({ error: 'You can only upload reports for appointments at your hospital.' });
+          }
           targetUserId = appt.user_id;
           const patient = await col('users').findOne({ id: appt.user_id });
           targetPatientName = patient ? patient.name : appt.patient_name;
@@ -129,6 +197,9 @@ const handleReportUpload = async (req, res, next) => {
       } else if (patientEmail) {
         const patient = await col('users').findOne({ email: patientEmail });
         if (patient) {
+          if (!req.user.is_super_admin && patient.hospital_id !== req.user.hospital_id) {
+            return res.status(403).json({ error: 'You can only upload reports for patients at your hospital.' });
+          }
           targetUserId = patient.id;
           targetPatientName = patient.name;
           targetPatientEmail = patient.email;
@@ -162,30 +233,21 @@ const handleReportUpload = async (req, res, next) => {
       created_at: nowIso()
     };
 
-    const blockTitle = isAdmin
-      ? `Hospital Report Issued by ${hospitalName}: ${originalName} for ${cleanPatientName(targetPatientName)}`
-      : `Patient Medical Record Sealed: ${originalName}`;
-
-    const block = await HealthcareBlockchain.addBlock(
-      'MEDICAL_RECORD',
-      blockTitle,
-      String(targetUserId),
-      cleanPatientName(targetPatientName),
-      {
-        reportId: report.id,
-        filename: originalName,
-        fileSize: report.file_size,
-        mimeType: report.mime_type,
-        hospital: hospitalName,
-        category,
-        issuedBy: req.user.name,
-        role: isAdmin ? 'hospital_staff' : 'patient'
-      },
-      documentHash
-    );
+    const block = await medicalRecordLedger.anchorRecord(documentHash);
 
     report.block_index = block.index;
     await col('reports').insertOne(report);
+    await col('medical_record_audits').insertOne({
+      id: await db.nextId('medical_record_audits'),
+      report_id: report.id,
+      user_id: report.user_id,
+      event_type: 'sealed',
+      status: 'sealed',
+      actor_role: isAdmin ? 'admin' : 'patient',
+      block_index: block.index,
+      provider: medicalRecordLedger.provider,
+      created_at: report.created_at
+    });
 
     return res.status(201).json({
       report: {
@@ -237,6 +299,69 @@ router.get('/:id/download', requireAuth, asyncRoute(async (req, res) => {
   return res.sendFile(filePath);
 }));
 
+router.post('/:id/verify', requireAuth, asyncRoute(async (req, res) => {
+  const reportId = idFrom(req.params.id);
+  const report = await col('reports').findOne({ id: reportId });
+  if (!report) return res.status(404).json({ error: 'Report not found.' });
+
+  const isOwner = String(report.user_id) === String(req.user.id)
+    || (req.user.email && report.patient_email && report.patient_email.toLowerCase() === req.user.email.toLowerCase());
+  if (req.user.role !== 'admin' && !isOwner) return res.status(403).json({ error: 'Access denied.' });
+
+  const filePath = path.join(UPLOAD_DIR, report.stored_name);
+  const fileExists = fs.existsSync(filePath);
+  const ledgerResult = await medicalRecordLedger.verifyRecordAnchor(report);
+  const fileMatches = fileExists && hashFile(fs.readFileSync(filePath)) === report.document_hash;
+  const status = classifyIntegrityStatus({
+    fileExists,
+    fileMatches,
+    anchorStatus: ledgerResult.status
+  });
+  const verified = status === 'verified' && fileMatches;
+  const createdAt = nowIso();
+  const actorRole = req.user.role === 'admin' ? 'admin' : 'patient';
+  const auditHash = hashAuditEvent({
+    reportId: report.id,
+    status,
+    actorRole,
+    createdAt,
+    documentHash: report.document_hash || ''
+  });
+  const db = getDb();
+  let verificationBlock = null;
+  if (ledgerResult.chainValid) {
+    verificationBlock = await medicalRecordLedger.anchorVerification(status, auditHash);
+  }
+  await col('medical_record_audits').insertOne({
+    id: await db.nextId('medical_record_audits'),
+    report_id: report.id,
+    user_id: report.user_id,
+    event_type: 'verification',
+    status,
+    actor_role: actorRole,
+    audit_hash: auditHash,
+    block_index: verificationBlock?.index ?? null,
+    provider: medicalRecordLedger.provider,
+    created_at: createdAt
+  });
+
+  const auditHistory = await col('medical_record_audits').find(
+    { report_id: report.id, user_id: report.user_id },
+    { projection: { _id: 0, event_type: 1, status: 1, actor_role: 1, block_index: 1, provider: 1, created_at: 1 } }
+  ).sort({ created_at: -1 }).limit(50).toArray();
+  return res.json({
+    reportId: String(report.id),
+    status,
+    verified,
+    fileMatches,
+    anchorMatches: ledgerResult.anchorMatches,
+    chainValid: ledgerResult.chainValid,
+    provider: medicalRecordLedger.provider,
+    verifiedAt: createdAt,
+    auditHistory
+  });
+}));
+
 router.patch('/:id/share', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts control report sharing.' });
   if (typeof req.body.shared !== 'boolean') return res.status(400).json({ error: 'Choose whether to share this report with your hospital.' });
@@ -247,22 +372,25 @@ router.patch('/:id/share', requireAuth, asyncRoute(async (req, res) => {
   return res.json({ ok: true, shared_with_hospital: req.body.shared });
 }));
 
-router.post('/:id/summary', requireAuth, asyncRoute(async (req, res) => {
+router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Report summaries are available to the patient who uploaded the file.' });
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
-  if (report.mime_type !== 'application/pdf') return res.status(415).json({ error: 'The local text summary currently supports text-based PDF files only.' });
+  if (report.mime_type !== 'application/pdf') return res.status(415).json({ error: 'AI explanations currently support PDF reports only.' });
   const { sentences, pagesRead, totalPages } = await extractReportSentences(report.stored_name);
   if (!sentences.length) return res.status(422).json({ error: 'No selectable text was found. Scanned PDFs and images need OCR, which is not enabled.' });
-  const stopWords = new Set('about after again against also among because before being between could does during each from further have having into more most other over same should some such than that their them then there these they this through under until very what when where which while with would your'.split(' '));
-  const frequencies = new Map();
-  for (const word of sentences.join(' ').toLowerCase().match(/[a-z]{3,}/g) || []) {
-    if (!stopWords.has(word)) frequencies.set(word, (frequencies.get(word) || 0) + 1);
+  let explanation;
+  try {
+    explanation = await summarizeReportText(sentences.join('\n'), undefined, [
+      report.patient_name,
+      report.patient_email,
+      req.user.name,
+      req.user.email
+    ]);
+  } catch (error) {
+    if (error instanceof ReportSummaryError) return res.status(error.status).json({ error: error.message });
+    throw error;
   }
-  const ranked = sentences.map((sentence, index) => {
-    const words = sentence.toLowerCase().match(/[a-z]{3,}/g) || [];
-    return { sentence, index, score: words.reduce((sum, word) => sum + (frequencies.get(word) || 0), 0) / Math.max(words.length, 1) };
-  }).sort((a, b) => b.score - a.score).slice(0, 4).sort((a, b) => a.index - b.index);
   const lastUsedAt = nowIso();
   const usageUpdate = await col('reports').findOneAndUpdate(
     { id: report.id, user_id: req.user.id },
@@ -270,10 +398,9 @@ router.post('/:id/summary', requireAuth, asyncRoute(async (req, res) => {
     { returnDocument: 'after', includeResultMetadata: false }
   );
   return res.json({
-    summary: ranked.map(item => item.sentence.slice(0, 500)), pagesRead, totalPages,
+    ...explanation, pagesRead, totalPages,
     usageCount: usageUpdate.summary_count, lastUsedAt: usageUpdate.summary_last_used_at,
-    method: 'local-extractive',
-    notice: 'This is an automatically selected text extract, not AI diagnosis or medical advice. Confirm all details with your clinician.'
+    notice: 'AI-generated explanation uses report-matched local references and may be incomplete or inaccurate. It is not a diagnosis or medical advice. Ask your clinician to interpret the report.'
   });
 }));
 
@@ -288,4 +415,3 @@ router.delete('/:id', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-

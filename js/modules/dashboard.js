@@ -6,17 +6,17 @@ import { escapeHtml, stat, panelHead, quick, chart, toast } from '../components/
 export function userDashboard() {
   const pendingCount = state.appointments.filter(a => a.status === 'Pending').length;
   const nextAppt = state.appointments.find(a => a.status === 'Confirmed' || a.status === 'Pending');
+  const isFemale = state.gender === 'female';
 
   return `
   <div class="welcome-card">
     <div class="welcome-card-left">
-      <div class="welcome-badge">Patient Health Portal</div>
+      <div class="welcome-badge">${isFemale ? 'Personalized Women’s Health Portal' : 'Patient Health Portal'}</div>
       <h1>Welcome, ${escapeHtml(cleanPatientName(state.name))}</h1>
-      <p>Your secure digital health portal, powered by CareSphere SHA-256 Ledger. Active hospital: <strong style="color:rgba(255,255,255,.92)">${escapeHtml(state.hospitalName)}</strong></p>
+      <p>${isFemale ? 'Your secure care space includes private women’s wellness tools alongside your appointments and health records.' : 'Your secure digital health portal, powered by CareSphere SHA-256 Ledger.'} Active hospital: <strong style="color:rgba(255,255,255,.92)">${escapeHtml(state.hospitalName)}</strong></p>
       <div class="welcome-actions">
         <button class="btn btn-primary" onclick="bookAppointment()">Book Appointment</button>
-        <button class="btn btn-outline" onclick="go('blockchain')">Inspect Vault</button>
-        <button class="btn btn-outline" onclick="logout()" style="border-color:rgba(255,255,255,.18);color:rgba(255,255,255,.7)">Sign Out</button>
+        <button class="btn btn-outline" onclick="go('blockchain')">Record protection</button>
       </div>
     </div>
   </div>
@@ -28,10 +28,15 @@ export function userDashboard() {
     ${stat('Blockchain Blocks', `${runtime.apiBlocks.length ? '#' + runtime.apiBlocks[runtime.apiBlocks.length - 1].index : '—'}`, 'chain', '<span>Audited on MongoDB</span>')}
   </div>
 
+  ${isFemale ? `<div class="female-dashboard-card">
+    <div><span class="female-dashboard-kicker">🌷 Your wellness space</span><h2>Women’s Health & Wellness</h2><p>Private cycle and mood tracking with educational resources. Your wellness data stays in your patient account.</p></div>
+    <button class="btn btn-primary" onclick="go('womens-health')">Open wellness dashboard</button>
+  </div>` : ''}
+
   <div class="quick-grid">
     ${quick('calendar', 'Book a Visit', 'Schedule with a specialist at your hospital', "bookAppointment()")}
     ${quick('document', 'Medical Vault', 'View clinical records and lab tests', "go('records')")}
-    ${quick('health', "Women's Health", 'Cycle tracker, symptom logs and advice', "go('womens-health')")}
+    ${isFemale ? quick('health', "Women's Health", 'Cycle tracker, symptom logs and advice', "go('womens-health')") : ''}
     ${quick('pill', 'Prescriptions', 'View prescriptions from your doctor', "go('prescriptions')")}
     ${quick('billing', 'Billing', 'View invoices and payment history', "go('billing')")}
     ${quick('chain', 'Audit Trail', 'Verify cryptographic blockchain integrity', "go('blockchain')")}

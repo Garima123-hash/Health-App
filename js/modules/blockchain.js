@@ -1,40 +1,51 @@
 // Blockchain Module: SHA-256 Ledger Visualizer, Cryptographic Verification, Tamper Demo & Self-Healing
-import { runtime } from '../state.js';
+import { runtime, state } from '../state.js';
 import { apiRequest, refreshBackendData, formatAppointmentDate } from '../api.js';
 import { escapeHtml, toast, stat, panelHead } from '../components/ui.js';
 
 export function renderBlockchain() {
-  const isValid = runtime.blockchainValidation?.isValid ?? true;
+  const isValid = runtime.blockchainValidation?.isValid === true;
+  const checked = typeof runtime.blockchainValidation?.isValid === 'boolean';
   const count = runtime.apiBlocks.length;
 
   return `<div class="welcome">
     <div>
-      <h1>Cryptographic Blockchain Ledger ⛓️</h1>
-      <p>Immutable, tamper-evident SHA-256 hash chain securing patient records, appointments, doctor onboardings, and hospital facilities.</p>
+      <h1>Record protection</h1>
+      <p>Medical report contents stay off the ledger. A digital fingerprint helps detect if a saved file has changed.</p>
     </div>
     <div class="blockchain-actions">
-      <button class="btn btn-primary" onclick="verifyBlockchain()">🔍 Verify Chain Integrity</button>
-      <button class="btn btn-outline" style="border-color:#e74c3c;color:#c0392b" onclick="simulateTamper()">🚨 Simulate Tamper (Judge Demo)</button>
-      <button class="btn btn-light" onclick="repairBlockchain()">🔄 Restore Ledger</button>
+      <button class="btn btn-primary" onclick="verifyBlockchain()">Check protection</button>
     </div>
   </div>
 
-  <div class="chain-banner ${isValid ? 'valid' : 'tampered'}">
+  <div class="chain-banner ${!checked ? '' : (isValid ? 'valid' : 'tampered')}">
     <div>
-      <strong>${isValid ? '✅ Cryptographic Chain Status: 100% VERIFIED & IMMUTABLE' : '🚨 CRITICAL SECURITY ALERT: Cryptographic Tampering Detected!'}</strong>
-      <p>${isValid ? `All ${count} block${count === 1 ? '' : 's'} in the healthcare ledger match their SHA-256 cryptographic signatures. No unauthorized data modifications detected.` : escapeHtml(runtime.blockchainValidation?.reason || 'Cryptographic hash mismatch detected! An unauthorized modification was identified in the block chain.')}</p>
+      <strong>${!checked ? 'Protection has not been checked yet' : (isValid ? 'No ledger changes detected' : 'The ledger needs attention')}</strong>
+      <p>${!checked
+        ? 'Select “Check protection” to validate the record ledger.'
+        : (isValid
+          ? `The latest check found no changes in the ledger (${count} recorded event${count === 1 ? '' : 's'}).`
+          : escapeHtml(runtime.blockchainValidation?.reason || 'A ledger check found a mismatch. Contact your hospital administrator.'))}</p>
     </div>
-    <span class="status ${isValid ? 'active' : 'critical'}">${isValid ? 'CHAIN SECURED' : 'INTEGRITY BREACH'}</span>
+    ${checked ? `<span class="status ${isValid ? 'active' : 'critical'}">${isValid ? 'Looks good' : 'Needs review'}</span>` : ''}
   </div>
 
-  <div class="stats">
+  ${state.role === 'admin' ? `<details class="blockchain-advanced">
+    <summary>Advanced ledger details</summary>
+    <div class="blockchain-actions">
+      ${state.isSuperAdmin ? `
+        <button class="btn btn-outline" style="border-color:#e74c3c;color:#c0392b" onclick="simulateTamper()">Simulate tampering</button>
+        <button class="btn btn-light" onclick="repairBlockchain()">Repair ledger</button>
+      ` : ''}
+    </div>
+    <div class="stats">
     ${stat('Total Blocks Mined', String(count), '⛓️', 'Immutable ledger height')}
-    ${stat('Hashing Protocol', 'SHA-256', '🔐', 'Zero-knowledge fingerprint')}
+    ${stat('Fingerprint', 'SHA-256', '🔐', 'Medical files only')}
     ${stat('Consensus / Proof', 'Proof of Work', '⚙️', 'Target: Leading zero nonce')}
-    ${stat('Integrity State', isValid ? 'Secured' : 'Tampered', '🛡️', `<span class="${isValid ? 'up' : 'down'}">${isValid ? 'All signatures match' : 'Tamper alert triggered'}</span>`)}
-  </div>
+    ${stat('Integrity State', !checked ? 'Not checked' : (isValid ? 'Looks good' : 'Needs review'), '🛡️', `<span class="${isValid ? 'up' : 'down'}">${!checked ? 'Check pending' : (isValid ? 'No mismatch found' : 'Mismatch detected')}</span>`)}
+    </div>
 
-  <div class="panel">
+    <div class="panel">
     ${panelHead('Blockchain Block Explorer', 'Every patient interaction is permanently sealed with previous block hash linkage')}
     <div class="chain-timeline">
       ${runtime.apiBlocks.map((b, idx) => {
@@ -76,72 +87,50 @@ export function renderBlockchain() {
         </article>`;
       }).join('')}
     </div>
-  </div>`;
+    </div>
+  </details>` : ''}`;
 }
 
 export async function verifyBlockchain() {
-  toast('Recalculating SHA-256 signatures across all ledger blocks...');
+  toast('Checking record protection…');
   try {
     const res = await apiRequest('/api/blockchain/verify');
     runtime.blockchainValidation = res;
     if (typeof window.renderAll === 'function') window.renderAll();
     if (res.isValid) {
-      toast('✅ Verification Complete: All blocks match cryptographic signatures.');
+      toast('Protection check complete. No ledger changes detected.');
     } else {
-      toast('🚨 Verification Failed: Cryptographic mismatch identified in chain.');
+      toast('Protection check found a mismatch. Contact your hospital administrator.');
     }
   } catch (err) {
-    runtime.blockchainValidation = { isValid: true, length: runtime.apiBlocks.length, brokenBlockIndex: null };
-    if (typeof window.renderAll === 'function') window.renderAll();
-    toast('✅ Verification Complete: All blocks match cryptographic signatures.');
+    toast(err.message || 'Could not check record protection.');
   }
 }
 
 export async function simulateTamper() {
-  toast('Simulating unauthorized patient data modification in database...');
+  toast('Running the tampering demo…');
   try {
     const res = await apiRequest('/api/blockchain/simulate-tamper', { method: 'POST', body: '{}' });
     await refreshBackendData();
     runtime.blockchainValidation = res.validation;
     if (typeof window.renderAll === 'function') window.renderAll();
     if (typeof window.go === 'function') window.go('blockchain');
-    toast(`🚨 Tamper Alert: Hash mismatch detected at Block #${res.tamperedBlockIndex ?? 0}! The chain immediately caught the alteration.`);
+    toast('The demo tampering change was detected.');
   } catch (err) {
-    const target = runtime.apiBlocks[runtime.apiBlocks.length - 1] || runtime.apiBlocks[0];
-    if (target) {
-      if (target.data) target.data.title = '🚨 TAMPERED RECORD: Unauthorized Alteration Detected!';
-      runtime.blockchainValidation = {
-        isValid: false,
-        length: runtime.apiBlocks.length,
-        brokenBlockIndex: target.index,
-        reason: `Cryptographic hash mismatch at Block #${target.index}. Payload was modified without recalculating valid SHA-256 signature!`
-      };
-      if (typeof window.renderAll === 'function') window.renderAll();
-      if (typeof window.go === 'function') window.go('blockchain');
-      toast(`🚨 Tamper Alert: Hash mismatch detected at Block #${target.index}!`);
-    }
+    toast(err.message || 'Could not run the tampering demo.');
   }
 }
 
 export async function repairBlockchain() {
-  toast('Restoring ledger state and re-verifying signatures...');
+  toast('Repairing the ledger…');
   try {
     const res = await apiRequest('/api/blockchain/repair', { method: 'POST', body: '{}' });
     await refreshBackendData();
     runtime.blockchainValidation = res.validation;
     if (typeof window.renderAll === 'function') window.renderAll();
     if (typeof window.go === 'function') window.go('blockchain');
-    toast('✅ Blockchain integrity restored. All blocks are verified.');
+    toast('Ledger repair completed.');
   } catch (err) {
-    if (runtime.apiBlocks.length > 0) {
-      if (runtime.apiBlocks[0].index === 0 && runtime.apiBlocks[0].data) {
-        runtime.apiBlocks[0].data.title = 'CareSphere Cryptographic Genesis Block';
-      }
-      runtime.blockchainValidation = { isValid: true, length: runtime.apiBlocks.length, brokenBlockIndex: null };
-      if (typeof window.renderAll === 'function') window.renderAll();
-      if (typeof window.go === 'function') window.go('blockchain');
-      toast('✅ Blockchain integrity restored. All blocks are verified.');
-    }
+    toast(err.message || 'Could not repair the ledger.');
   }
 }
-

@@ -4,14 +4,17 @@ import { apiRequest } from '../api.js';
 import { escapeHtml, toast, stat, panelHead } from '../components/ui.js';
 
 export async function fetchWomensHealth() {
-  if (state.role !== 'user') return;
+  if (state.role !== 'user' || state.gender !== 'female') {
+    runtime.womensHealthData = null;
+    return;
+  }
   try {
     runtime.womensHealthData = await apiRequest('/api/womens-health').catch(() => null);
   } catch (_) {}
 }
 
 export function renderWomensHealth() {
-  if (state.role !== 'user') return '<div class="empty-state"><div>🔒</div><strong>Private Area</strong><p>This private wellness section is only available to patient accounts.</p></div>';
+  if (state.role !== 'user' || state.gender !== 'female') return '';
   if (!runtime.womensHealthData || !runtime.womensHealthData.enabled) {
     return `<div class="welcome">
       <div>
@@ -241,4 +244,3 @@ export async function deleteWomensHealthData() {
     toast(err.message || 'Could not clear data.');
   }
 }
-

@@ -34,23 +34,31 @@ export function renderDoctors() {
   runtime.doctorSearch = '';
   runtime.doctorDepartment = 'all';
   runtime.doctorHospital = 'all';
-  const doctorsList = runtime.apiDoctors.length ? runtime.apiDoctors : fallbackDoctors;
+  const doctorsList = state.role === 'admin' ? runtime.apiDoctors : (runtime.apiDoctors.length ? runtime.apiDoctors : fallbackDoctors);
   const specialties = [...new Set(doctorsList.map(doctor => doctor.specialty))];
   const hospitalsList = runtime.apiHospitals.length ? runtime.apiHospitals : [...new Set(doctorsList.map(d => d.hospital_name || 'CareSphere Central Hospital'))];
+  const activeHospital = runtime.adminHospitals.find(hospital => hospital.name === state.hospitalName);
+  const hospitalControl = state.role === 'admin' && state.isSuperAdmin
+    ? `<select aria-label="Manage hospital roster" onchange="selectAdminHospital(this.value)">
+        ${runtime.adminHospitals.map(hospital => `<option value="${escapeHtml(hospital.id)}" ${String(hospital.id) === String(activeHospital?.id) ? 'selected' : ''}>Manage ${escapeHtml(hospital.name)}</option>`).join('')}
+      </select>`
+    : state.role === 'admin'
+      ? `<span class="status active">${escapeHtml(state.hospitalName)}</span>`
+    : `<select onchange="filterDoctorHospital(this.value)" style="font-weight:600">
+        <option value="all">All Hospitals</option>
+        ${hospitalsList.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('')}
+      </select>`;
 
   return `<div class="welcome">
     <div>
       <h1>${state.role === 'admin' ? 'Doctors & departments' : 'Find your doctor'}</h1>
-      <p>${state.role === 'admin' ? `Review clinical staff assigned to ${escapeHtml(state.hospitalName)} and affiliated hospitals.` : 'Select a hospital facility and consult with our medical specialists.'}</p>
+      <p>${state.role === 'admin' ? `Manage this hospital’s roster. Doctors you add belong only to ${escapeHtml(state.hospitalName)}.` : 'Select a hospital facility and consult with our medical specialists.'}</p>
     </div>
     ${state.role === 'admin' ? `<button class="btn btn-primary" onclick="openAddDoctorModal()">Add Doctor to ${escapeHtml(state.hospitalName)}</button>` : ''}
   </div>
   <div class="searchbar">
     <input placeholder="Search doctors or specialties…" oninput="filterDoctors(this.value)">
-    <select onchange="filterDoctorHospital(this.value)" style="font-weight:600">
-      <option value="all">All Hospitals</option>
-      ${hospitalsList.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('')}
-    </select>
+    ${hospitalControl}
     <select onchange="filterDepartment(this.value)">
       <option value="all">All specialties</option>
       ${specialties.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
@@ -74,8 +82,30 @@ export function filterDepartment(department) {
   applyDoctorFilters();
 }
 
+export async function selectAdminHospital(hospitalId) {
+  try {
+    const result = await apiRequest('/api/admin/hospitals/select', {
+      method: 'POST',
+      body: JSON.stringify({ hospitalId })
+    });
+    state.hospitalName = result.hospital.name;
+    const storedUser = JSON.parse(localStorage.getItem('caresphere_user') || '{}');
+    localStorage.setItem('caresphere_user', JSON.stringify({
+      ...storedUser,
+      hospital_id: result.hospital.id,
+      hospital_name: result.hospital.name
+    }));
+    await refreshBackendData();
+    if (typeof window.renderAll === 'function') window.renderAll();
+    toast(`Now managing ${state.hospitalName}.`);
+  } catch (error) {
+    console.error('Hospital selection error:', error.message);
+    toast(error.message || 'Could not change hospital roster.');
+  }
+}
+
 export function applyDoctorFilters() {
-  const doctorsList = runtime.apiDoctors.length ? runtime.apiDoctors : fallbackDoctors;
+  const doctorsList = state.role === 'admin' ? runtime.apiDoctors : (runtime.apiDoctors.length ? runtime.apiDoctors : fallbackDoctors);
   const filtered = doctorsList.filter(doctor => {
     const matchesQuery = (doctor.name + ' ' + doctor.specialty + ' ' + (doctor.hospital_name || '')).toLowerCase().includes((runtime.doctorSearch || '').toLowerCase());
     const matchesDept = runtime.doctorDepartment === 'all' || doctor.specialty === runtime.doctorDepartment;
@@ -146,4 +176,3 @@ export async function submitAddDoctor(event) {
     if (submit) submit.disabled = false;
   }
 }
-

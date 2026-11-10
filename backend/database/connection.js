@@ -34,6 +34,7 @@ async function connectDatabase(uri) {
     // Auto-migrate legacy documents missing integer 'id' or required fields before building unique indexes
     const idCollections = [
       'hospitals', 'users', 'doctors', 'appointments', 'reports',
+      'medical_record_audits',
       'womens_health_mood_entries', 'womens_health_cycle_entries',
       'prescriptions', 'pending_prescriptions', 'invoices', 'hospital_admins'
     ];
@@ -72,6 +73,17 @@ async function connectDatabase(uri) {
         }
         await database.collection(name).updateOne({ _id: doc._id }, { $set: updates });
       }
+    }
+
+    if (existing.has('users')) {
+      await database.collection('users').updateMany(
+        { gender: { $exists: false } },
+        { $set: { gender: 'unspecified' } }
+      );
+      await database.collection('users').updateMany(
+        { gender: { $ne: 'female' }, womens_health_enabled: true },
+        { $set: { womens_health_enabled: false } }
+      );
     }
 
     // Auto-align foreign keys in reports and appointments to integer user.id and doctor.id
@@ -117,6 +129,24 @@ async function connectDatabase(uri) {
       }
     }
 
+    if (existing.has('blocks')) {
+      const medicalRecordBlocks = await database.collection('blocks')
+        .find({ type: 'MEDICAL_RECORD' }, { projection: { index: 1 } }).toArray();
+      for (const block of medicalRecordBlocks) {
+        await database.collection('blocks').updateOne(
+          { _id: block._id },
+          {
+            $set: {
+              title: 'Medical record sealed',
+              actor_id: 'SYSTEM',
+              actor_name: 'CareSphere Medical Records',
+              data: { action: 'record-sealed', provider: 'legacy-sha256-linked-blockchain-v1' }
+            }
+          }
+        );
+      }
+    }
+
     for (const [name, indexes] of Object.entries(indexDefinitions)) {
       try {
         await database.collection(name).createIndexes(indexes.map(([key, options]) => ({ key, ...options })));
@@ -156,4 +186,3 @@ module.exports = {
   getDb,
   col
 };
-

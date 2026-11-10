@@ -18,7 +18,9 @@ async function extractReportSentences(storedName, maxPages = 20) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
     const text = content.items.map(item => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim();
-    sentences.push(...(text.match(/[^.!?]+[.!?]?/g) || []).map(sentence => sentence.trim()).filter(sentence => sentence.length > 35));
+    sentences.push(...(text.match(/(?:[^.!?]|\.(?=\d))+[.!?]?(?=\s|$)/g) || [])
+      .map(sentence => sentence.trim())
+      .filter(sentence => sentence.length > 35));
   }
   return { sentences, pagesRead, totalPages: document.numPages };
 }
@@ -26,4 +28,3 @@ async function extractReportSentences(storedName, maxPages = 20) {
 module.exports = {
   extractReportSentences
 };
-

@@ -97,7 +97,8 @@ async function start() {
   try {
     await seedData();
   } catch (error) {
-    console.warn('Seed data warning:', error.message);
+    await db.close();
+    throw error;
   }
   const server = app.listen(PORT, () => console.log(`CareSphere API running on http://localhost:${PORT}`));
   let closing = false;

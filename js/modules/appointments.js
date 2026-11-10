@@ -8,7 +8,8 @@ export function appointmentsTable(rows, admin = false) {
     return `<div class="empty-state">
       <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
       <strong>No appointments recorded yet</strong>
-      <p>${admin ? 'New patient appointment bookings will appear here in real-time.' : 'You have no scheduled appointments. Use "Book appointment" to schedule one.'}</p>
+      <p>${admin ? 'New patient appointment bookings will appear here in real-time.' : 'You have no scheduled appointments yet. Find a doctor to request a visit.'}</p>
+      ${!admin ? '<button class="btn btn-primary" type="button" onclick="go(&quot;doctors&quot;)">Find a doctor</button>' : ''}
     </div>`;
   }
 
@@ -222,7 +223,7 @@ export function renderAppointments() {
     <div class="welcome-actions">
       ${admin ? '<button class="btn btn-outline" onclick="go(&quot;blockchain&quot;)">Blockchain Ledger</button>' : ''}
       ${admin ? '<button class="btn btn-primary" onclick="openAddDoctorModal()">Add Doctor</button>' : ''}
-      ${admin ? '<button class="btn btn-primary" onclick="addPatient()">Register Patient</button>' : '<button class="btn btn-primary" onclick="bookAppointment()">Book Appointment</button>'}
+      ${admin ? '<button class="btn btn-primary" onclick="addPatient()">Register Patient</button>' : '<button class="btn btn-primary" onclick="go(&quot;doctors&quot;)">Find a doctor</button>'}
     </div>
   </div>
   <div class="panel">
@@ -404,4 +405,3 @@ export async function submitAppointment(event) {
     if (submit) submit.disabled = false;
   }
 }
-

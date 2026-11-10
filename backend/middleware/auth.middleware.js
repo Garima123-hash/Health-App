@@ -83,6 +83,14 @@ const requireAdmin = asyncRoute(async (req, res, next) => {
   return next();
 });
 
+const requireSuperAdmin = asyncRoute(async (req, res, next) => {
+  if (!req.user && req.session?.user) req.user = req.session.user;
+  if (!req.user || req.user.role !== 'admin' || req.user.is_super_admin !== true) {
+    return res.status(403).json({ error: 'Central administrator access required.' });
+  }
+  return next();
+});
+
 function requirePatient(req, res, next) {
   if (!req.user && req.session?.user) req.user = req.session.user;
   if (!req.user) return res.status(401).json({ error: 'Please sign in to continue.' });
@@ -90,10 +98,20 @@ function requirePatient(req, res, next) {
   return next();
 }
 
+function requireFemalePatient(req, res, next) {
+  if (!req.user && req.session?.user) req.user = req.session.user;
+  if (!req.user) return res.status(401).json({ error: 'Please sign in to continue.' });
+  if (req.user.role !== 'patient' || req.user.gender !== 'female') {
+    return res.status(403).json({ error: 'This section is available to female patient accounts.' });
+  }
+  return next();
+}
+
 module.exports = {
   authenticate,
   requireAuth,
   requireAdmin,
-  requirePatient
+  requireSuperAdmin,
+  requirePatient,
+  requireFemalePatient
 };
-

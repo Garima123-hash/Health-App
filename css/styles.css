@@ -32,6 +32,61 @@
   --topbar-h: 72px;
 }
 
+#app[data-gender="female"] {
+  --green: #b94f78;
+  --green-dark: #843451;
+  --green-mid: #9c3f62;
+  --green-soft: #f9eaf0;
+  --green-xsoft: #fff6f9;
+  --ink: #3e2430;
+  --ink-mid: #654251;
+  --line: #f0dce4;
+  --line-dark: #e4c2d0;
+  --bg: #fff8fa;
+  --shadow-sm: 0 2px 8px rgba(111, 50, 76, .07);
+  --shadow: 0 8px 28px rgba(111, 50, 76, .10);
+  --shadow-lg: 0 20px 54px rgba(111, 50, 76, .13);
+}
+
+#app[data-gender="female"] .welcome-card {
+  background: linear-gradient(130deg, #873450 0%, #a84365 55%, #c1587d 100%);
+}
+
+#app[data-gender="female"] .female-dashboard-card {
+  align-items: center;
+  background: linear-gradient(125deg, #fff0f5, #fff9fb);
+  border: 1px solid #efcad8;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin: 20px 0;
+  padding: 22px 24px;
+}
+
+#app[data-gender="female"] .female-dashboard-card h2 {
+  color: #843451;
+  font-size: 19px;
+  margin: 6px 0;
+}
+
+#app[data-gender="female"] .female-dashboard-card p {
+  color: #765464;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 650px;
+}
+
+#app[data-gender="female"] .female-dashboard-kicker {
+  color: #a34567;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
 /* ---- Reset & Base --------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -1017,32 +1072,6 @@ tbody tr:hover { background: #fbfef9; }
   to   { transform: translateY(0); opacity: 1; }
 }
 
-/* ---- Logout Button ------------------------------------- */
-.logout-top-btn {
-  background: white;
-  border: 1px solid var(--line-dark);
-  color: var(--muted);
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  border-radius: 9px;
-  cursor: pointer;
-  transition: all .18s;
-  font-size: 12px;
-}
-.logout-top-btn:hover {
-  background: var(--danger-soft);
-  border-color: #f0c0bc;
-  color: var(--danger);
-  transform: translateY(-1px);
-}
-@media (max-width: 640px) {
-  .logout-top-btn .logout-text { display: none; }
-  .logout-top-btn { padding: 7px 10px; }
-}
-
 /* ---- Blockchain Ledger --------------------------------- */
 .chain-banner {
   padding: 15px 20px;
@@ -1174,6 +1203,30 @@ tbody tr:hover { background: #fbfef9; }
 }
 .record-item-card:hover { background: #f8fcfa; }
 .record-item-card:last-child { border-bottom: 0; }
+.record-integrity {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+.record-integrity small,
+.record-audit-history small { color: var(--muted); font-size: 10px; }
+.record-audit-history { font-size: 11px; }
+.record-audit-history summary { color: var(--green-dark); cursor: pointer; font-weight: 700; }
+.record-audit-history ol { margin: 8px 0; padding-left: 18px; }
+.record-audit-history li { margin: 7px 0; }
+.record-audit-history li small { display: block; line-height: 1.5; margin-top: 3px; }
+
+#app[data-gender="female"] #page-womens-health .panel {
+  border-color: #efcad8;
+}
+
+#app[data-gender="female"] #page-womens-health .notice {
+  background: #fff0f5;
+  border-color: #efcad8;
+  color: #713e53;
+}
 
 /* ---- Forms & Auth Utilities ---------------------------- */
 .check-row { display: flex; align-items: center; gap: 9px; margin: 14px 0; color: var(--ink); font-size: 12px; font-weight: 700; }
@@ -1181,6 +1234,29 @@ tbody tr:hover { background: #fbfef9; }
 .record-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .record-summary ul { padding-left: 20px; }
 .record-summary li { margin: 7px 0; }
+.record-summary-card {
+  background: #fff;
+  border: 1px solid #c4dfd6;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  margin-bottom: 18px;
+  padding: 18px;
+}
+.record-summary-card h3 { color: var(--green-dark); margin: 0 0 10px; }
+.record-summary-card h4 { margin: 16px 0 6px; }
+.record-summary-method { color: var(--muted); font-size: 11px !important; font-weight: 700; }
+.record-summary-sources { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+.record-summary-sources summary { color: var(--green-dark); cursor: pointer; font-size: 12px; font-weight: 700; }
+.record-summary-sources a { color: var(--green-dark); }
+.blockchain-advanced { margin-top: 20px; }
+.blockchain-advanced > summary { color: var(--green-dark); cursor: pointer; font-weight: 700; padding: 12px 0; }
+.blockchain-advanced .blockchain-actions { margin: 12px 0; }
+.record-summary-card p,
+.record-summary-card li,
+.record-summary-card dd { font-size: 13px; line-height: 1.65; }
+.record-summary-card dt { font-weight: 700; margin-top: 8px; }
+.record-summary-card dd { margin-left: 0; }
+.record-summary-notice { border-top: 1px solid var(--line); color: var(--muted); margin: 16px 0 0; padding-top: 12px; }
 
 /* ---- Women's Health ------------------------------------ */
 .faq-list details { padding: 14px 4px; border-bottom: 1px solid var(--line); }
@@ -1200,6 +1276,13 @@ tbody tr:hover { background: #fbfef9; }
 .health-symptoms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .health-symptoms label, .health-consent-choice { display: flex; align-items: flex-start; gap: 8px; color: var(--ink-mid); font-size: 12px; line-height: 1.5; }
 .health-symptoms input, .health-consent-choice input { accent-color: var(--green); flex: 0 0 auto; margin-top: 3px; }
+
+@media (max-width: 640px) {
+  #app[data-gender="female"] .female-dashboard-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .health-consent-choice { margin: 12px 0; }
 .health-consent-choice small { color: var(--muted); }
 .health-answer {

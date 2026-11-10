@@ -12,8 +12,11 @@ export const fallbackDoctors = [
 export const state = {
   page: 'dashboard',
   role: 'user', // 'user' (patient) or 'admin'
+  isSuperAdmin: false,
   name: 'Patient',
   email: '',
+  gender: 'unspecified',
+  themeGender: 'unspecified',
   hospitalName: 'CareSphere Central Hospital',
   appointments: []
 };
@@ -23,13 +26,16 @@ export const runtime = {
   apiDoctors: [],
   apiPatients: [],
   apiReports: [],
+  adminHospitals: [],
+  hospitalAdmins: [],
+  recordVerifications: {},
   apiBlocks: [],
   apiHospitals: [
     'CareSphere Central Hospital',
     'Apollo Multi-Specialty Hospital',
     'Metro City Healthcare'
   ],
-  blockchainValidation: { isValid: true, length: 1, brokenBlockIndex: null },
+  blockchainValidation: { isValid: null, length: 0, brokenBlockIndex: null },
   appointmentSearch: '',
   appointmentStatus: 'all',
   doctorSearch: '',
@@ -44,9 +50,8 @@ export const userNav = [
   ['appointments', '📅', 'My appointments'],
   ['doctors', '👨‍⚕️', 'Find a doctor'],
   ['records', '📄', 'Health records'],
-  ['blockchain', '⛓️', 'Blockchain Vault'],
+  ['blockchain', '⛓️', 'Record protection'],
   ['womens-health', '🌸', "Women's Health"],
-  ['prescriptions', '💊', 'Prescriptions'],
   ['billing', '💳', 'Bills & payments'],
   ['settings', '⚙️', 'My profile']
 ];
@@ -56,6 +61,7 @@ export const adminNav = [
   ['appointments', '📅', 'Appointments'],
   ['patients', '👥', 'Patients'],
   ['doctors', '👨‍⚕️', 'Doctors & departments'],
+  ['records', '📄', 'Medical records & integrity'],
   ['blockchain', '⛓️', 'Blockchain Ledger'],
   ['staff', '🩺', 'Staff management'],
   ['reports', '📈', 'Reports & analytics'],

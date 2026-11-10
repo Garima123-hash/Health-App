@@ -1,0 +1,123 @@
+{
+  "planHash": "b2885a046946eac79de7ad49ddd2aa1b0c179c500867ef869c660cbeee351c15",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-11-10T13:29:51.0753116Z",
+  "retryCount": 3,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "server-entry-syntax",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "",
+        "durationMs": 1930
+      },
+      {
+        "name": "api-health-endpoint",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 1,
+        "outputSample": "server exited before responding (exit=1)\n--- server output ---\nCareSphere startup failed: 585A0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\\ws\\deps\\openssl\\openssl\\ssl\\record\\rec_layer_s3.c:1605:SSL alert number 80\r\n\r\nD:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\sdam\\topology.js:327\r\n                const timeoutError = new error_1.MongoServerSelectionError(\u0060Server selection timed out after ${timeout?.duration} ms\u0060, this.description);\r\n                                     ^\r\n\r\nMongoServerSelectionError: 585A0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\\ws\\deps\\openssl\\openssl\\ssl\\record\\rec_layer_s3.c:1605:SSL alert number 80\r\n\r\n    at Topology.selectServer (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\sdam\\topology.js:327:38)\r\n    at runNextTicks (node:internal/process/task_queues:65:5)\r\n    at process.processTimers (node:internal/timers:520:9)\r\n    at async Topology._connect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\sdam\\topology.js:200:28)\r\n    at async Topology.connect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\sdam\\topology.js:152:13)\r\n    at async topologyConnect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\mongo_client.js:261:17)\r\n    at async MongoClient._connect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\mongo_client.js:274:13)\r\n    at async MongoClient.connect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\mongo_client.js:199:13)\r\n    at async MongoClient.connect (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\mongo_client.js:439:16) {\r\n  errorLabelSet: Set(0) {},\r\n  reason: TopologyDescription {\r\n    type: \u0027ReplicaSetNoPrimary\u0027,\r\n    servers: Map(3) {\r\n      \u0027ac-aiwnbgy-shard-00-00.1tbh2bc.mongodb.net:27017\u0027 =\u003E ServerDescription {\r\n        address: \u0027ac-aiwnbgy-shard-00-00.1tbh2bc.mongodb.net:27017\u0027,\r\n        type: \u0027Unknown\u0027,\r\n        hosts: [],\r\n        passives: [],\r\n        arbiters: [],\r\n        tags: {},\r\n        minWireVersion: 0,\r\n        maxWireVersion: 0,\r\n        roundTripTime: -1,\r\n        minRoundTripTime: 0,\r\n        lastUpdateTime: 323554643,\r\n        lastWriteDate: 0,\r\n        error: MongoNetworkError: 585A0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\\ws\\deps\\openssl\\openssl\\ssl\\record\\rec_layer_s3.c:1605:SSL alert number 80\r\n        \r\n            at TLSSocket.\u003Canonymous\u003E (D:\\caresphere-sqlite-backend\\caresphere-frontend\\node_modules\\mongodb\\lib\\cmap\\connect.js:286:44)\r\n            at Object.onceWrapper (node:events:633:26)\r\n            at TLSSocket.emit (node:events:518:28)\r\n            at emitErrorNT (node:internal/streams/destroy:170:8)\r\n            at emitErrorCloseNT (node:internal/streams/destroy:129:3)\r\n            at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {\r\n          errorLabelSet: Set(1) { \u0027ResetPool\u0027 },\r\n          beforeHandshake: false,\r\n          [cause]: [Error: 585A0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:c:\\ws\\deps\\openssl\\openssl\\ssl\\record\\rec_layer_s3.c:1605:SSL alert number 80\r\n          ] {\r\n            library: \u0027SSL routines\u0027,\r\n            reason: \u0027tlsv1 alert internal error\u0027,\r\n            code: \u0027ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR\u0027\r\n          }\r\n        },\r\n        topologyVersion: null,\r\n        setName: null,\r\n        setVersion: null,\r\n        electionId: null,\r\n        logicalSessionTimeoutMinutes: null,\r\n        maxMessageSizeBytes: null,\r\n        maxWriteBatchSize: null,\r\n        maxBsonObjectSize: null,\r\n        primary: null,\r\n        me: null,\r\n        \u0027$clusterTime\u0027: null,\r\n        iscryptd: false\r\n      },\r\n      \u0027ac-aiwnbgy-shard-00-01.1tbh2bc.mongodb.net:27017\u0027 =\u003E ServerDescription {\r\n        address: \u0027ac-aiwnbgy-shard-00-01.1tbh2bc.mongodb.net:27017\u0027,\r\n        type: \u0027Unknown\u0027,\r\n        hosts: [],\r\n        passives: [],\r\n        arbiters: [],\r\n        tags: {\n\u2026[truncated]",
+        "durationMs": 35975
+      },
+      {
+        "name": "home-page",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "\u003Cprobe error: A task was canceled.\u003E",
+        "durationMs": 60613
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": false,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 1,
+        "outputSample": "\r\n\u003E caresphere@1.0.0 test\r\n\u003E node --test --test-concurrency=1\r\n\r\nTAP version 13\r\n# Subtest: hospital choices, booking reasons, and patient-only appointment access\r\nnot ok 1 - hospital choices, booking reasons, and patient-only appointment access\r\n  ---\r\n  duration_ms: 20707.486\r\n  type: \u0027test\u0027\r\n  location: \u0027D:\\\\caresphere-sqlite-backend\\\\caresphere-frontend\\\\test\\\\appointments.test.js:5:1\u0027\r\n  failureType: \u0027testCodeFailure\u0027\r\n  error: |-\r\n    Test application failed to start.\r\n    CareSphere startup failed: connect ECONNREFUSED 127.0.0.1:27017\r\n    \r\n  code: \u0027ERR_ASSERTION\u0027\r\n  name: \u0027AssertionError\u0027\r\n  expected: true\r\n  actual: false\r\n  operator: \u0027==\u0027\r\n  stack: |-\r\n    startTestApp (D:\\caresphere-sqlite-backend\\caresphere-frontend\\helpers.cjs:99:10)\r\n    async TestContext.\u003Canonymous\u003E (D:\\caresphere-sqlite-backend\\caresphere-frontend\\test\\appointments.test.js:6:50)\r\n    async Test.run (node:internal/test_runner/test:1054:7)\r\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)\r\n  ...\r\n# Subtest: JWT bearer access and rotating HttpOnly refresh tokens authenticate and revoke correctly\r\nnot ok 2 - JWT bearer access and rotating HttpOnly refresh tokens authenticate and revoke correctly\r\n  ---\r\n  duration_ms: 20799.9998\r\n  type: \u0027test\u0027\r\n  location: \u0027D:\\\\caresphere-sqlite-backend\\\\caresphere-frontend\\\\test\\\\auth.test.js:22:1\u0027\r\n  failureType: \u0027testCodeFailure\u0027\r\n  error: |-\r\n    Test application failed to start.\r\n    CareSphere startup failed: connect ECONNREFUSED 127.0.0.1:27017\r\n    \r\n  code: \u0027ERR_ASSERTION\u0027\r\n  name: \u0027AssertionError\u0027\r\n  expected: true\r\n  actual: false\r\n  operator: \u0027==\u0027\r\n  stack: |-\r\n    startTestApp (D:\\caresphere-sqlite-backend\\caresphere-frontend\\helpers.cjs:99:10)\r\n    async TestContext.\u003Canonymous\u003E (D:\\caresphere-sqlite-backend\\caresphere-frontend\\test\\auth.test.js:23:50)\r\n    async Test.run (node:internal/test_runner/test:1054:7)\r\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)\r\n  ...\r\n# Subtest: starter doctor rosters are distinct across seeded hospitals\r\nok 3 - starter doctor rosters are distinct across seeded hospitals\r\n  ---\r\n  duration_ms: 1.4435\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: administrator doctor creation validates required fields and saves valid doctors\r\nnot ok 4 - administrator doctor creation validates required fields and saves valid doctors\r\n  ---\r\n  duration_ms: 21278.3456\r\n  type: \u0027test\u0027\r\n  location: \u0027D:\\\\caresphere-sqlite-backend\\\\caresphere-frontend\\\\test\\\\doctors.test.js:5:1\u0027\r\n  failureType: \u0027testCodeFailure\u0027\r\n  error: |-\r\n    Test application failed to start.\r\n    CareSphere startup failed: connect ECONNREFUSED 127.0.0.1:27017\r\n    \r\n  code: \u0027ERR_ASSERTION\u0027\r\n  name: \u0027AssertionError\u0027\r\n  expected: true\r\n  actual: false\r\n  operator: \u0027==\u0027\r\n  stack: |-\r\n    startTestApp (D:\\caresphere-sqlite-backend\\caresphere-frontend\\helpers.cjs:99:10)\r\n    async TestContext.\u003Canonymous\u003E (D:\\caresphere-sqlite-backend\\caresphere-frontend\\test\\doctors.test.js:6:50)\r\n    async Test.run (node:internal/test_runner/test:1054:7)\r\n    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)\r\n  ...\r\n# Subtest: women\u2019s health access is limited to authenticated female patient profiles\r\nok 5 - women\u2019s health access is limited to authenticated female patient profiles\r\n  ---\r\n  duration_ms: 1.2367\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: medical record fingerprints use SHA-256 and ledger anchors contain no patient or file metadata\r\nok 6 - medical record fingerprints use SHA-256 and ledger anchors contain no patient or file metadata\r\n  ---\r\n  duration_ms: 2.4804\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: record integrity statuses distinguish missing, modified, and valid evidence\r\nok 7 - record integrity statuses distinguish missing, modified, and valid evidence\r\n  ---\r\n  duration_ms: 0.1759\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: audit event fingerprints are stable and change with verification outcome\r\nok 8 - audit event fingerprints are stable and change with verification outcome\r\n  ---\r\n  duration_ms: 0.2676\r\n  type: \u0027test\u0027\r\n  ...\r\n# Subtest: hospital prescription rec\n\u2026[truncated]",
+        "durationMs": 177453,
+        "testResults": {
+          "testFramework": "unknown",
+          "runnerDetectedFrom": "none",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      }
+    ],
+    "executions": [
+      {
+        "source": "server-entry-syntax",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "--check",
+          "backend/server.js"
+        ],
+        "cwd": "D:\\caresphere-sqlite-backend\\caresphere-frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "api-health-endpoint",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "backend/server.js"
+        ],
+        "cwd": "D:\\caresphere-sqlite-backend\\caresphere-frontend",
+        "env": {
+          "PORT": "3188"
+        },
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "home-page",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\node.EXE",
+        "args": [
+          "backend/server.js"
+        ],
+        "cwd": "D:\\caresphere-sqlite-backend\\caresphere-frontend",
+        "env": {
+          "PORT": "3188"
+        },
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "D:\\caresphere-sqlite-backend\\caresphere-frontend",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}
