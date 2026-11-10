@@ -58,6 +58,7 @@
     <h2 class="auth-heading">Welcome back</h2><p class="auth-sub">Sign in to continue to your personalised healthcare workspace.</p>
     <div class="role-switch"><button id="roleUser" class="role-btn active" onclick="setRole('user')">♙ Patient / User</button><button id="roleAdmin" class="role-btn" onclick="setRole('admin')">▦ Administrator</button></div>
     <form id="loginForm" onsubmit="login(event)">
+      <div class="field" id="loginHospitalField" style="display:none"><label for="loginHospital">Hospital name</label><input id="loginHospital" name="hospitalName" type="text" maxlength="120" placeholder="Enter your assigned hospital name" autocomplete="organization"><small style="font-size:10.5px;color:var(--muted)">Enter the hospital assigned to your administrator account.</small></div>
       <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required autocomplete="username"></div>
       <div class="field" id="loginGenderField">
         <label for="loginGender">Dashboard theme</label>
