@@ -54,7 +54,7 @@ async function summarizeReportText(
     throw new ReportSummaryError('Groq report analysis is not configured. Add GROQ_API_KEY to your root .env file and restart the server.', 503);
   }
 
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
   let response;
   try {
     response = await fetchImplementation(GROQ_API_URL, {
