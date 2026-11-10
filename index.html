@@ -47,8 +47,8 @@
     <article class="feature"><div class="feature-icon">⛓</div><h3>Blockchain data integrity</h3><p>Medical records and consultations are cryptographically hashed and linked in an immutable SHA-256 block chain.</p></article>
     <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
   </div></div></section>
-  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>CareSphere Platform & Blockchain Vault:</strong> Built with Express, MongoDB, and an in-engine cryptographic SHA-256 Blockchain ledger. Patient appointments and medical records are committed to the chain with immutable block signatures, guaranteeing data tamper-evidence for hackathon presentation and clinical auditing.</div></div></section>
-  <footer class="footer">© 2026 CareSphere Health Platform · Cryptographic Medical Vault</footer>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:820px;margin:auto;text-align:left"><strong>CareSphere Platform & Blockchain Vault:</strong> Powered by Express, MongoDB, and an in-engine cryptographic SHA-256 Blockchain ledger. Patient appointments, cross-hospital medical records, Women’s Health check-ins, and digital prescriptions are committed to the chain with immutable block signatures, guaranteeing data tamper-evidence for hackathon presentation and clinical auditing.</div></div></section>
+  <footer class="footer">© 2026 CareSphere Health Platform · Cryptographic Medical Vault & Connected Care</footer>
 </div>
 
 <div id="authOverlay" class="auth-overlay hidden" onclick="if(event.target===this)closeAuth()">
@@ -92,7 +92,8 @@
       </div>
       <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required><option value="">First choose a hospital above</option></select></div>
       <div class="field"><label for="bookingDate">Date and time</label><input id="bookingDate" name="appointmentAt" type="datetime-local" required></div>
-      <div class="field"><label for="bookingReason">Reason for visit</label><input id="bookingReason" name="reason" type="text" maxlength="120" value="Consultation" placeholder="Consultation"></div>
+      <div class="field"><label for="bookingReason">Reason for visit</label><select id="bookingReason" name="reason" onchange="toggleOtherReason(this.value)" required><option>General consultation</option><option>Follow-up visit</option><option>New or worsening symptoms</option><option>Prescription review</option><option>Test results discussion</option><option>Preventive check-up</option><option value="Other">Other / not listed</option></select></div>
+      <div id="bookingReasonDetailsField" class="field hidden"><label for="bookingReasonDetails">Brief reason</label><input id="bookingReasonDetails" type="text" maxlength="110" placeholder="Briefly describe your reason"></div>
       <div id="bookingError" class="error" role="alert"></div>
       <div class="booking-actions"><button class="btn btn-outline" type="button" onclick="closeBooking()">Cancel</button><button id="bookingSubmit" class="btn btn-primary" type="submit">Request appointment</button></div>
     </form>
@@ -297,6 +298,7 @@
         <div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div>
       </div>
       <div class="top-right">
+        <button class="icon-btn" type="button" onclick="showNotifications()" aria-label="Show appointment and billing updates" title="Appointment and billing updates">♧<span class="notification-dot"></span></button>
         <button class="icon-btn" type="button" onclick="go('blockchain')" aria-label="Blockchain Ledger" title="Inspect Blockchain Ledger">⛓</button>
         <div class="profile" onclick="go('settings')" style="cursor:pointer" title="Manage account profile">
           <div class="avatar" id="avatarInitials">VS</div>
@@ -316,12 +318,16 @@
       <section id="page-doctors" class="page-section"></section>
       <section id="page-records" class="page-section"></section>
       <section id="page-blockchain" class="page-section"></section>
+      <section id="page-womens-health" class="page-section"></section>
+      <section id="page-ai" class="page-section"></section>
       <section id="page-prescriptions" class="page-section"></section>
       <section id="page-billing" class="page-section"></section>
       <section id="page-patients" class="page-section"></section>
       <section id="page-staff" class="page-section"></section>
       <section id="page-reports" class="page-section"></section>
+      <section id="page-hospitals" class="page-section"></section>
       <section id="page-settings" class="page-section"></section>
+      <section id="page-faq" class="page-section"></section>
     </div>
   </main>
 </div>

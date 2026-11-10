@@ -2,11 +2,12 @@
   "name": "caresphere",
   "version": "1.0.0",
   "private": true,
-  "description": "CareSphere frontend with Express and MongoDB backend",
+  "description": "CareSphere full-stack healthcare platform with Blockchain, Women's Health, and MongoDB",
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js"
+    "dev": "node --watch backend/server.js",
+    "test": "node --test --test-concurrency=1"
   },
   "engines": {
     "node": ">=20"
@@ -19,7 +20,10 @@
     "express-rate-limit": "^7.5.1",
     "express-session": "^1.19.0",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^6.22.0",
     "mongoose": "^9.12.1",
-    "multer": "^2.5.0"
+    "multer": "^2.5.0",
+    "pdfjs-dist": "^4.10.38"
   }
 }
