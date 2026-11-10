@@ -80,3 +80,4 @@ export async function refreshBackendData() {
     runtime.apiHospitals = hospitalData.hospitals.map(h => h.name);
   }
 }
+

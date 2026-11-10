@@ -396,3 +396,4 @@ export function renderRecords() {
     </div>
   </div>`;
 }
+

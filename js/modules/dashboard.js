@@ -133,3 +133,4 @@ export async function showNotifications() {
     toast('Notifications could not be loaded.');
   }
 }
+

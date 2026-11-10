@@ -83,3 +83,4 @@ export function renderAll() {
   const pSet = document.getElementById('page-settings');
   if (pSet) pSet.innerHTML = renderSettings();
 }
+

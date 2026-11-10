@@ -112,3 +112,4 @@ export async function saveHospitalName() {
     toast(err.message || 'Could not update hospital facility.');
   }
 }
+

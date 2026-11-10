@@ -406,3 +406,4 @@ export async function submitAppointment(event) {
     if (submit) submit.disabled = false;
   }
 }
+
