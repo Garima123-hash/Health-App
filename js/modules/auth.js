@@ -8,53 +8,69 @@ export function openAuth(role = 'user') {
   if (role === 'admin' && runtime.authMode === 'register') {
     toggleAuthMode();
   }
-  document.getElementById('authOverlay').classList.remove('hidden');
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.remove('hidden');
   showAuthError('');
 }
 
 export function closeAuth() {
-  document.getElementById('authOverlay').classList.add('hidden');
-  document.getElementById('authError').classList.add('hidden');
-  document.getElementById('authError').textContent = '';
+  const overlay = document.getElementById('authOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  const nameField = document.getElementById('registerNameField');
+  if (nameField) nameField.remove();
   if (runtime.authMode === 'register') {
     runtime.authMode = 'login';
     const note = document.getElementById('authModeNote');
     if (note) note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
+    const form = document.getElementById('loginForm');
+    const button = form ? form.querySelector('button[type="submit"]') : null;
+    if (button) button.textContent = 'Sign in securely →';
+    const heading = document.querySelector('.auth-heading');
+    if (heading) heading.textContent = 'Welcome back';
+    const sub = document.querySelector('.auth-sub');
+    if (sub) sub.textContent = 'Sign in to continue to your personalised healthcare workspace.';
+    const roleAdminBtn = document.getElementById('roleAdmin');
+    if (roleAdminBtn) roleAdminBtn.disabled = false;
   }
   showAuthError('');
 }
 
 export function setRole(role) {
   state.role = role;
-  document.getElementById('roleUser').classList.toggle('active', role === 'user');
-  document.getElementById('roleAdmin').classList.toggle('active', role === 'admin');
+  const userBtn = document.getElementById('roleUser');
+  if (userBtn) userBtn.classList.toggle('active', role === 'user');
+  const adminBtn = document.getElementById('roleAdmin');
+  if (adminBtn) adminBtn.classList.toggle('active', role === 'admin');
 
-  const hospGroup = document.getElementById('hospitalSelectGroup');
-  const hospSelect = document.getElementById('loginHospital');
+  const hospField = document.getElementById('loginHospitalField');
   const hospLabel = document.getElementById('loginHospitalLabel');
-  const nameField = document.getElementById('registerNameField');
-  const toggleBtn = document.querySelector('#authModeNote button');
+  const hospBadge = document.getElementById('loginHospitalBadge');
+  const hospNote = document.getElementById('loginHospitalNote');
+  const hospInput = document.getElementById('loginHospital');
+  const note = document.getElementById('authModeNote');
 
   if (role === 'admin') {
     if (runtime.authMode === 'register') {
       toggleAuthMode();
     }
-    if (toggleBtn) toggleBtn.style.display = 'none';
-    if (nameField) nameField.classList.add('hidden');
-    if (hospGroup) hospGroup.classList.remove('hidden');
-    if (hospLabel) hospLabel.innerHTML = 'Assign Hospital Facility <span style="font-weight:400;font-size:11px;color:var(--muted)">(Updates .env &amp; Workspace)</span>';
-    if (hospSelect) hospSelect.placeholder = 'e.g. CareSphere Central Hospital';
-    const note = document.getElementById('authModeNote');
-    if (note) note.innerHTML = '<small style="color:var(--muted)">Administrator authentication grants access to hospital governance, doctor rosters, patient records, and tamper-proof ledger auditing.</small>';
-  } else {
-    if (toggleBtn) toggleBtn.style.display = 'inline-block';
-    if (runtime.authMode === 'register' && nameField) {
-      nameField.classList.remove('hidden');
+    const nameField = document.getElementById('registerNameField');
+    if (nameField) nameField.remove();
+    if (note) {
+      note.innerHTML = '<small>Administrator access requires credentials configured in .env</small>';
     }
-    if (hospGroup) hospGroup.classList.remove('hidden');
-    if (hospLabel) hospLabel.textContent = 'Preferred Hospital';
-    if (hospSelect) hospSelect.placeholder = 'CareSphere Central Hospital';
-    const note = document.getElementById('authModeNote');
+    if (hospField) hospField.style.display = 'block';
+    if (hospLabel) hospLabel.textContent = 'Administered Hospital Facility Name';
+    if (hospBadge) {
+      hospBadge.textContent = '🏥 Syncs to .env';
+      hospBadge.style.color = 'var(--green)';
+    }
+    if (hospNote) hospNote.textContent = 'Enter your hospital facility name. Signing in updates your facility and writes ADMIN_HOSPITAL to .env.';
+    if (hospInput && !hospInput.value) {
+      hospInput.value = state.hospitalName || 'CareSphere Central Hospital';
+    }
+  } else {
+    // Hide hospital name completely for patient
+    if (hospField) hospField.style.display = 'none';
     if (note && runtime.authMode === 'login') {
       note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
     }
@@ -63,71 +79,89 @@ export function setRole(role) {
 }
 
 export function showAuthError(message) {
-  const el = document.getElementById('authError');
+  const el = document.getElementById('loginError') || document.getElementById('authError');
   if (!el) return;
+  el.textContent = message || '';
   if (!message) {
-    el.textContent = '';
     el.classList.add('hidden');
-    return;
+  } else {
+    el.classList.remove('hidden');
   }
-  el.textContent = message;
-  el.classList.remove('hidden');
 }
 
 export function toggleAuthMode() {
   runtime.authMode = runtime.authMode === 'login' ? 'register' : 'login';
   const heading = document.querySelector('.auth-heading');
   const sub = document.querySelector('.auth-sub');
-  const submit = document.getElementById('authSubmit');
-  const nameField = document.getElementById('registerNameField');
+  const form = document.getElementById('loginForm');
+  const button = form ? form.querySelector('button[type="submit"]') : (document.getElementById('authSubmit') || document.querySelector('button[type="submit"]'));
   const note = document.getElementById('authModeNote');
+  let nameField = document.getElementById('registerNameField');
 
   if (runtime.authMode === 'register') {
-    if (nameField) {
-      nameField.classList.remove('hidden');
+    if (!nameField && form) {
+      nameField = document.createElement('div');
       nameField.id = 'registerNameField';
+      nameField.className = 'field';
+      nameField.innerHTML = '<label for="registerName">Full name</label><input id="registerName" name="fullName" type="text" minlength="2" maxlength="80" autocomplete="name" placeholder="Your full name" required>';
+      form.insertBefore(nameField, form.firstElementChild);
     }
-    if (heading) heading.textContent = 'Create patient account';
-    if (sub) sub.textContent = 'Register your personal health portal on CareSphere';
-    if (submit) submit.textContent = 'Register account';
-    const hospLabel = document.getElementById('loginHospitalLabel');
-    if (hospLabel) hospLabel.textContent = 'Primary Hospital';
-    const hospInput = document.getElementById('loginHospital');
-    if (hospInput && !hospInput.value) hospInput.value = state.hospitalName || 'CareSphere Central Hospital';
+    const regInput = document.getElementById('registerName');
+    if (regInput) {
+      regInput.required = true;
+      regInput.disabled = false;
+    }
+    if (nameField) nameField.classList.remove('hidden');
+    const pwdInput = document.getElementById('password');
+    if (pwdInput) {
+      pwdInput.minLength = 4;
+      pwdInput.autocomplete = 'new-password';
+    }
+    if (heading) heading.textContent = 'Create your account';
+    if (sub) sub.textContent = 'Register to save appointments and seal medical records on the blockchain.';
+    if (button) button.textContent = 'Create account →';
+    if (note) note.innerHTML = '<span>Already registered?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Sign in</button><br><small>Password must contain at least 4 characters.</small>';
     const roleAdminBtn = document.getElementById('roleAdmin');
-    if (roleAdminBtn) roleAdminBtn.style.display = 'none';
+    if (roleAdminBtn) roleAdminBtn.disabled = true;
     setRole('user');
-    note.innerHTML = '<span>Already registered?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Sign in</button><br><small>Password must contain at least 4 characters.</small>';
   } else {
-    if (nameField) nameField.classList.add('hidden');
-    if (heading) heading.textContent = 'Sign in to CareSphere';
-    if (sub) sub.textContent = 'Access your digital medical records and appointments';
-    if (submit) submit.textContent = 'Sign in';
-    const hospLabel = document.getElementById('loginHospitalLabel');
-    if (hospLabel) hospLabel.textContent = state.role === 'admin' ? 'Assign Hospital Facility' : 'Hospital location';
+    if (nameField) {
+      nameField.remove();
+    }
+    const pwdInput = document.getElementById('password');
+    if (pwdInput) {
+      pwdInput.minLength = 4;
+      pwdInput.autocomplete = 'current-password';
+    }
+    if (heading) heading.textContent = 'Welcome back';
+    if (sub) sub.textContent = 'Sign in to continue to your personalised healthcare workspace.';
+    if (button) button.textContent = 'Sign in securely →';
+    if (note) note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
     const roleAdminBtn = document.getElementById('roleAdmin');
-    if (roleAdminBtn) roleAdminBtn.style.display = 'inline-block';
-    note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
+    if (roleAdminBtn) roleAdminBtn.disabled = false;
   }
   showAuthError('');
 }
 
 export async function submitAuth(event) {
-  event.preventDefault();
+  if (event && event.preventDefault) event.preventDefault();
   showAuthError('');
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('password').value;
-  const hospitalName = document.getElementById('loginHospital')?.value.trim() || state.hospitalName || 'CareSphere Central Hospital';
-  const submit = document.getElementById('authSubmit');
-  submit.disabled = true;
+  const emailInput = document.getElementById('email');
+  const passInput = document.getElementById('password');
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value : '';
+  const hospitalName = document.getElementById('loginHospital')?.value?.trim() || state.hospitalName || 'CareSphere Central Hospital';
+  const form = document.getElementById('loginForm');
+  const submit = form ? form.querySelector('button[type="submit"]') : (document.getElementById('authSubmit') || document.querySelector('button[type="submit"]'));
+  if (submit) submit.disabled = true;
 
   try {
     let result;
     if (runtime.authMode === 'register') {
-      const name = document.getElementById('registerName')?.value.trim() || '';
+      const name = document.getElementById('registerName')?.value?.trim() || '';
       if (!name || name.length < 2) {
         showAuthError('Please enter your full name (at least 2 characters).');
-        submit.disabled = false;
+        if (submit) submit.disabled = false;
         return;
       }
       result = await apiRequest('/api/auth/register', {
@@ -166,18 +200,26 @@ export async function submitAuth(event) {
     console.error('Authentication error:', err.message);
     showAuthError(err.message || 'Authentication error. Please check your credentials.');
   } finally {
-    submit.disabled = false;
+    if (submit) submit.disabled = false;
   }
 }
 
+export const login = submitAuth;
+
 export async function enterDashboard() {
   closeAuth();
-  document.getElementById('landing').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
+  const landingEl = document.getElementById('landing');
+  if (landingEl) landingEl.classList.add('hidden');
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.classList.remove('hidden');
+
   const displayName = state.role === 'admin' ? state.name : cleanPatientName(state.name);
-  document.getElementById('profileName').textContent = displayName;
-  document.getElementById('profileRole').textContent = state.role === 'admin' ? `Administrator • ${state.hospitalName || 'CareSphere'}` : 'Patient account';
-  document.getElementById('avatarInitials').textContent = displayName.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
+  const pName = document.getElementById('profileName');
+  if (pName) pName.textContent = displayName;
+  const pRole = document.getElementById('profileRole');
+  if (pRole) pRole.textContent = state.role === 'admin' ? `Administrator • ${state.hospitalName || 'CareSphere'}` : 'Patient account';
+  const aInit = document.getElementById('avatarInitials');
+  if (aInit) aInit.textContent = displayName.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
 
   try {
     await refreshBackendData();
@@ -215,9 +257,12 @@ export async function logout() {
   if (typeof window.closeStatusModal === 'function') window.closeStatusModal();
   if (typeof window.closeAddDoctorModal === 'function') window.closeAddDoctorModal();
 
-  document.getElementById('app').classList.add('hidden');
-  document.getElementById('landing').classList.remove('hidden');
-  document.getElementById('sidebar').classList.remove('open');
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.classList.add('hidden');
+  const landingEl = document.getElementById('landing');
+  if (landingEl) landingEl.classList.remove('hidden');
+  const sb = document.getElementById('sidebar');
+  if (sb) sb.classList.remove('open');
   state.page = 'dashboard';
   toast('Signed out successfully.');
 }
