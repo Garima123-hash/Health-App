@@ -5,10 +5,10 @@ import { escapeHtml, toast, toLocalDateTimeValue } from '../components/ui.js';
 
 export function appointmentsTable(rows, admin = false) {
   if (!rows || rows.length === 0) {
-    return `<div class="empty-state" style="padding:32px 16px;text-align:center;color:var(--muted)">
-      <div style="font-size:26px;margin-bottom:8px">📅</div>
+    return `<div class="empty-state">
+      <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
       <strong>No appointments recorded yet</strong>
-      <p style="font-size:11px;margin-top:4px">${admin ? 'New patient appointment bookings will appear here in real-time.' : 'You have no scheduled appointments. Use &quot;Book appointment&quot; to schedule one.'}</p>
+      <p>${admin ? 'New patient appointment bookings will appear here in real-time.' : 'You have no scheduled appointments. Use "Book appointment" to schedule one.'}</p>
     </div>`;
   }
 
@@ -53,7 +53,7 @@ export function appointmentsTable(rows, admin = false) {
           </td>
           <td>
             <div class="person-cell">
-              <div class="patient-avatar" style="background:#eaf5ef;color:var(--green)">🩺</div>
+              <div class="patient-avatar" style="background:#eaf5ef;color:var(--green);font-size:12px">Dr</div>
               <div>
                 <strong>${escapeHtml(a.doctorName || 'Doctor')}</strong>
                 <small>${escapeHtml(a.dept || 'Specialist')}</small>
@@ -61,29 +61,29 @@ export function appointmentsTable(rows, admin = false) {
             </div>
           </td>
           <td>
-            <span style="font-weight:600;color:#2c5344;font-size:11px">🏥 ${escapeHtml(a.hospital_name || 'CareSphere Central Hospital')}</span>
+            <span style="font-weight:600;color:#2c5344;font-size:11px">${escapeHtml(a.hospital_name || 'CareSphere Central Hospital')}</span>
           </td>
           <td>
             <div>${escapeHtml(a.date)}</div>
             <small style="color:var(--muted)">${escapeHtml(a.type || 'Consultation')}</small>
           </td>
           <td>
-            <span class="status completed" style="font-size:9.5px;cursor:pointer" onclick="go('blockchain')" title="Cryptographically sealed on blockchain">⛓️ Block #${i + 1}</span>
+            <span class="status completed" style="font-size:9.5px;cursor:pointer" onclick="go('blockchain')" title="Cryptographically sealed on blockchain">Block #${i + 1}</span>
           </td>
           <td>
             <select class="status-select ${escapeHtml((a.status || 'Pending').toLowerCase())}"
                     onchange="updateAppointmentStatus('${escapeHtml(a.id)}', this.value)"
                     title="Select to change status">
-              <option value="Pending" ${a.status === 'Pending' ? 'selected' : ''}>⏳ Pending</option>
-              <option value="Confirmed" ${a.status === 'Confirmed' ? 'selected' : ''}>✅ Confirmed</option>
-              <option value="Completed" ${a.status === 'Completed' ? 'selected' : ''}>🏆 Completed</option>
-              <option value="Cancelled" ${a.status === 'Cancelled' ? 'selected' : ''}>❌ Cancelled</option>
+              <option value="Pending"   ${a.status === 'Pending'   ? 'selected' : ''}>Pending</option>
+              <option value="Confirmed" ${a.status === 'Confirmed' ? 'selected' : ''}>Confirmed</option>
+              <option value="Completed" ${a.status === 'Completed' ? 'selected' : ''}>Completed</option>
+              <option value="Cancelled" ${a.status === 'Cancelled' ? 'selected' : ''}>Cancelled</option>
             </select>
           </td>
           <td>
             <div style="display:flex;gap:6px;align-items:center">
               <button class="link-btn" onclick="openStatusModal('${escapeHtml(a.id)}')">Manage</button>
-              <button class="link-btn" style="color:var(--green);font-weight:750" onclick="openPatientRecordsModal('${escapeHtml(patientId)}', '${escapeHtml(pName)}', '${escapeHtml(a.id)}', '${escapeHtml(a.patientEmail || '')}')">📋 Records</button>
+              <button class="link-btn" style="color:var(--green);font-weight:750" onclick="openPatientRecordsModal('${escapeHtml(patientId)}', '${escapeHtml(pName)}', '${escapeHtml(a.id)}', '${escapeHtml(a.patientEmail || '')}')">Records</button>
             </div>
           </td>
         </tr>`;
@@ -109,7 +109,7 @@ export function appointmentsTable(rows, admin = false) {
       ${rows.map((a, i) => `<tr data-status="${escapeHtml((a.status || 'Pending').toLowerCase())}">
         <td>
           <div class="person-cell">
-            <div class="patient-avatar">🩺</div>
+            <div class="patient-avatar">Dr</div>
             <div>
               <strong>${escapeHtml(a.doctorName || a.name || 'Doctor')}</strong>
               <small>${escapeHtml(a.type || 'Consultation')}</small>
@@ -117,20 +117,18 @@ export function appointmentsTable(rows, admin = false) {
           </div>
         </td>
         <td>
-          <span style="font-weight:600;color:#2c5344;font-size:11px">🏥 ${escapeHtml(a.hospital_name || 'CareSphere Central Hospital')}</span>
+          <span style="font-weight:600;color:#2c5344;font-size:11px">${escapeHtml(a.hospital_name || 'CareSphere Central Hospital')}</span>
         </td>
         <td>${escapeHtml(a.dept || 'General Medicine')}</td>
         <td>${escapeHtml(a.date)}</td>
-        <td><span class="status completed" style="font-size:9.5px;cursor:pointer" onclick="go('blockchain')">⛓️ Block #${i + 1}</span></td>
+        <span class="status completed" style="font-size:9.5px;cursor:pointer" onclick="go('blockchain')">Block #${i + 1}</span>
         <td><span class="status ${escapeHtml((a.status || 'Pending').toLowerCase())}">${escapeHtml(a.status || 'Pending')}</span></td>
         <td>
           <div style="display:flex;gap:6px;align-items:center">
             <button class="link-btn" onclick="appointmentAction('${escapeHtml(a.id)}', false)">
               Details
             </button>
-            <button class="link-btn" style="color:var(--green);font-weight:700" onclick="go('records')">
-              📄 Records
-            </button>
+            <button class="link-btn" style="color:var(--green);font-weight:700" onclick="go('records')">Records</button>
           </div>
         </td>
       </tr>`).join('')}
@@ -222,9 +220,9 @@ export function renderAppointments() {
       <p>${admin ? 'Review and manage hospital appointments with patient, consulting doctor, hospital facility, and blockchain verification.' : 'Keep track of your scheduled visits across hospital facilities.'}</p>
     </div>
     <div class="welcome-actions">
-      ${admin ? '<button class="btn btn-outline" onclick="go(&quot;blockchain&quot;)">Blockchain Ledger ⛓️</button>' : ''}
-      ${admin ? '<button class="btn btn-primary" onclick="openAddDoctorModal()">➕ Add Doctor</button>' : ''}
-      ${admin ? '<button class="btn btn-primary" onclick="addPatient()">➕ Register patient</button>' : '<button class="btn btn-primary" onclick="bookAppointment()">📅 Book appointment</button>'}
+      ${admin ? '<button class="btn btn-outline" onclick="go(&quot;blockchain&quot;)">Blockchain Ledger</button>' : ''}
+      ${admin ? '<button class="btn btn-primary" onclick="openAddDoctorModal()">Add Doctor</button>' : ''}
+      ${admin ? '<button class="btn btn-primary" onclick="addPatient()">Register Patient</button>' : '<button class="btn btn-primary" onclick="bookAppointment()">Book Appointment</button>'}
     </div>
   </div>
   <div class="panel">

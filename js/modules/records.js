@@ -364,7 +364,7 @@ export function renderRecords() {
     </div>
     <div>
       ${isAdmin ? `
-        <button class="btn btn-primary" onclick="openAdminUploadReportModal()">➕ Issue Report to Patient</button>
+        <button class="btn btn-primary" onclick="openAdminUploadReportModal()">Issue Report to Patient</button>
       ` : `
         <input type="file" id="reportFileInput" accept=".pdf,.png,.jpg,.jpeg" style="display:none" onchange="uploadReportFile(event)">
         <button class="btn btn-primary" onclick="document.getElementById('reportFileInput').click()">⬆️ Upload & Seal Document</button>

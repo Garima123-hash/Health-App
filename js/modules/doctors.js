@@ -4,15 +4,30 @@ import { apiRequest, refreshBackendData } from '../api.js';
 import { escapeHtml, toast } from '../components/ui.js';
 
 export function backendDoctorCards(items) {
-  return items.map(d => `<article class="doctor-card">
-    <div class="doctor-photo">${d.symbol || '👨‍⚕️'}</div>
+  return items.map(d => {
+    const initials = d.name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+    return `<article class="doctor-card">
+    <div class="doctor-photo"><span class="doctor-initials">${escapeHtml(initials)}</span></div>
     <h3>${escapeHtml(d.name)}</h3>
     <p>${escapeHtml(d.specialty)}</p>
-    <div class="doctor-meta" style="font-weight:650;color:#2c5344">🏥 &nbsp; ${escapeHtml(d.hospital_name || 'CareSphere Central Hospital')}</div>
-    <div class="doctor-meta">🩺 &nbsp; ${escapeHtml(d.experience || 'Care specialist')}</div>
-    <div class="doctor-meta">📅 &nbsp; Today • Outpatient Clinic</div>
-    ${state.role === 'admin' ? '<button class="btn btn-light full" style="margin-top:10px" onclick="toast(&quot;Doctor: ' + escapeHtml(d.name) + ' at ' + escapeHtml(d.hospital_name || state.hospitalName) + '&quot;)">View profile →</button>' : `<button class="btn btn-primary full" style="margin-top:10px" onclick="bookAppointment('${escapeHtml(d.id)}')">Book appointment →</button>`}
-  </article>`).join('') || '<div class="empty-state">No doctors found matching filters.</div>';
+    <div class="doctor-meta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      ${escapeHtml(d.hospital_name || 'CareSphere Central Hospital')}
+    </div>
+    <div class="doctor-meta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      ${escapeHtml(d.experience || 'Care specialist')}
+    </div>
+    <div class="doctor-meta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Available today &middot; Outpatient Clinic
+    </div>
+    ${state.role === 'admin'
+      ? `<button class="btn btn-light full" style="margin-top:12px" onclick="toast('Doctor: ${escapeHtml(d.name)} at ${escapeHtml(d.hospital_name || state.hospitalName)}')">View profile</button>`
+      : `<button class="btn btn-primary full" style="margin-top:12px" onclick="bookAppointment('${escapeHtml(d.id)}')">Book appointment</button>`
+    }
+  </article>`;
+  }).join('') || '<div class="empty-state"><strong>No doctors found matching filters.</strong></div>';
 }
 
 export function renderDoctors() {
@@ -28,13 +43,13 @@ export function renderDoctors() {
       <h1>${state.role === 'admin' ? 'Doctors & departments' : 'Find your doctor'}</h1>
       <p>${state.role === 'admin' ? `Review clinical staff assigned to ${escapeHtml(state.hospitalName)} and affiliated hospitals.` : 'Select a hospital facility and consult with our medical specialists.'}</p>
     </div>
-    ${state.role === 'admin' ? `<button class="btn btn-primary" onclick="openAddDoctorModal()">➕ Add Doctor to ${escapeHtml(state.hospitalName)}</button>` : ''}
+    ${state.role === 'admin' ? `<button class="btn btn-primary" onclick="openAddDoctorModal()">Add Doctor to ${escapeHtml(state.hospitalName)}</button>` : ''}
   </div>
   <div class="searchbar">
     <input placeholder="Search doctors or specialties…" oninput="filterDoctors(this.value)">
     <select onchange="filterDoctorHospital(this.value)" style="font-weight:600">
-      <option value="all">🏥 All Hospitals</option>
-      ${hospitalsList.map(h => `<option value="${escapeHtml(h)}">🏥 ${escapeHtml(h)}</option>`).join('')}
+      <option value="all">All Hospitals</option>
+      ${hospitalsList.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('')}
     </select>
     <select onchange="filterDepartment(this.value)">
       <option value="all">All specialties</option>

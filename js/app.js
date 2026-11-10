@@ -231,7 +231,7 @@ async function initAppConfig() {
       const hospInput = document.getElementById('loginHospital');
       if (hospInput) hospInput.value = config.defaultHospital;
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // Bootstrap Application
