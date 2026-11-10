@@ -1,6 +1,12 @@
 'use strict';
 
 require('dotenv').config();
+const dns = require('dns');
+try {
+  // Use public DNS to reliably resolve MongoDB Atlas SRV connection strings
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (_) {}
+
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -9,6 +15,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const session = require('express-session');
+const { MongoStore } = require('connect-mongo');
 const multer = require('multer');
 const pdfjs = import('pdfjs-dist/legacy/build/pdf.mjs');
 const { funFacts, retrieveKnowledge } = require('./womens-health-knowledge');
@@ -36,10 +44,37 @@ const validEmail = email => typeof email === 'string'
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const withoutMongoId = ({ _id, ...document }) => document;
 
+function cleanPatientName(name) {
+  if (!name || typeof name !== 'string') return 'Patient';
+  return name.replace(/\s*[-—(]\s*(CareSphere|Apollo|Metro|Hospital|Clinic|Healthcare).*$/i, '').trim() || name;
+}
+
+function updateEnvFile(key, value) {
+  try {
+    if (process.env[key] === value) return;
+    const envPath = path.join(ROOT, '.env');
+    let content = '';
+    if (fs.existsSync(envPath)) {
+      content = fs.readFileSync(envPath, 'utf8');
+    }
+    const regex = new RegExp(`^${key}=.*$`, 'm');
+    if (regex.test(content)) {
+      content = content.replace(regex, `${key}=${value}`);
+    } else {
+      content = content.trimEnd() + (content.length > 0 ? '\n' : '') + `${key}=${value}\n`;
+    }
+    fs.writeFileSync(envPath, content, 'utf8');
+    process.env[key] = value;
+    console.log(`[ENV] Synchronized ${key}="${value}" to .env file`);
+  } catch (err) {
+    console.warn(`[ENV] Could not write ${key} to .env:`, err.message);
+  }
+}
+
 function publicUser(user, hospitalName = '') {
   return {
     id: user.id,
-    name: user.name,
+    name: user.role === 'patient' ? cleanPatientName(user.name) : user.name,
     email: user.email,
     role: user.role,
     age: user.age ?? null,
@@ -90,7 +125,7 @@ function createAccessToken(user, familyId) {
   });
 }
 
-async function issueAuthTokens(user, res) {
+async function issueAuthTokens(user, res, req = null) {
   const familyId = crypto.randomUUID();
   const token = crypto.randomBytes(48).toString('base64url');
   await col('auth_refresh_tokens').insertOne({
@@ -100,58 +135,98 @@ async function issueAuthTokens(user, res) {
     expires_at: Date.now() + REFRESH_TOKEN_TTL_MS,
     created_at: nowIso()
   });
-  res.cookie(REFRESH_COOKIE, token, refreshCookieOptions);
-  return { user, accessToken: createAccessToken(user, familyId), expiresIn: 900 };
+  if (res && typeof res.cookie === 'function') {
+    res.cookie(REFRESH_COOKIE, token, refreshCookieOptions);
+  }
+  if (req && req.session) {
+    req.session.user = user;
+    await new Promise((resolve) => {
+      req.session.save(() => resolve());
+    });
+  }
+  const accessToken = createAccessToken(user, familyId);
+  return { user, accessToken, token: accessToken, expiresIn: 900 };
 }
 
+// Dual Authentication (JWT Bearer Token + Express Session + Refresh Cookie)
 async function authenticate(req, res, next) {
+  // 1. Try Bearer Authorization Header
   const authorization = req.get('authorization');
-  if (!authorization) {
-    req.user = null;
-    return next();
-  }
-  const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  if (!match) return res.status(401).json({ error: 'Use a valid bearer access token.' });
-  try {
-    const payload = jwt.verify(match[1], JWT_SECRET, {
-      algorithms: ['HS256'],
-      issuer: 'caresphere-api',
-      audience: 'caresphere-web'
-    });
-    const user = await userWithHospital(Number(payload.sub));
-    if (!user) return res.status(401).json({ error: 'Please sign in to continue.' });
-    const activeFamily = await col('auth_refresh_tokens').findOne({
-      family_id: payload.sid,
-      user_id: user.id,
-      revoked_at: { $exists: false },
-      expires_at: { $gt: Date.now() }
-    }, { projection: { _id: 1 } });
-    if (!activeFamily) return res.status(401).json({ error: 'Your login has expired. Please sign in again.' });
-    req.user = user;
-    return next();
-  } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.TokenExpiredError) {
-      return res.status(401).json({ error: 'Your access token is invalid or expired. Please sign in again.' });
+  if (authorization) {
+    const match = /^Bearer\s+(.+)$/i.exec(authorization);
+    if (match) {
+      try {
+        const payload = jwt.verify(match[1], JWT_SECRET, {
+          algorithms: ['HS256'],
+          issuer: 'caresphere-api',
+          audience: 'caresphere-web'
+        });
+        const user = await userWithHospital(Number(payload.sub));
+        if (user) {
+          req.user = user;
+          if (req.session) req.session.user = user;
+          return next();
+        }
+      } catch (error) {
+        // Fall through to session / refresh token check
+      }
     }
-    return next(error);
   }
+
+  // 2. Try Express Session
+  if (req.session && req.session.user) {
+    req.user = req.session.user;
+    return next();
+  }
+
+  // 3. Try Persistent Refresh Cookie Fallback
+  const refreshToken = readCookie(req, REFRESH_COOKIE);
+  if (refreshToken) {
+    try {
+      const tokenHash = hashRefreshToken(refreshToken);
+      const tokenDoc = await col('auth_refresh_tokens').findOne({
+        token_hash: tokenHash,
+        revoked_at: { $exists: false },
+        expires_at: { $gt: Date.now() }
+      });
+      if (tokenDoc) {
+        const user = await userWithHospital(tokenDoc.user_id);
+        if (user) {
+          req.user = user;
+          if (req.session) {
+            req.session.user = user;
+            req.session.save(() => {});
+          }
+          return next();
+        }
+      }
+    } catch (_) {}
+  }
+
+  req.user = null;
+  return next();
 }
 
 function requireAuth(req, res, next) {
-  if (!req.user) return res.status(401).json({ error: 'Please sign in to continue.' });
+  if (!req.user && (!req.session || !req.session.user)) {
+    return res.status(401).json({ error: 'Please sign in to continue.' });
+  }
+  if (!req.user && req.session?.user) {
+    req.user = req.session.user;
+  }
   return next();
 }
 
 const requireAdmin = asyncRoute(async (req, res, next) => {
-  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator access required.' });
-  const assigned = await col('hospital_admins').findOne({
-    user_id: req.user.id, hospital_id: req.user.hospital_id
-  }, { projection: { _id: 1 } });
-  if (!assigned) return res.status(403).json({ error: 'No hospital is assigned to this administrator account.' });
+  if (!req.user && req.session?.user) req.user = req.session.user;
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Administrator access required.' });
+  }
   return next();
 });
 
 function requirePatient(req, res, next) {
+  if (!req.user && req.session?.user) req.user = req.session.user;
   if (!req.user) return res.status(401).json({ error: 'Please sign in to continue.' });
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Patient account access required.' });
   return next();
@@ -187,11 +262,19 @@ async function extractReportSentences(storedName, maxPages = 20) {
   return { sentences, pagesRead, totalPages: document.numPages };
 }
 
-const allowedReportTypes = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+// Multer storage for medical records
+const allowedReportTypes = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png'
+};
+
 const reportStorage = multer.diskStorage({
   destination: (_req, _file, callback) => callback(null, UPLOAD_DIR),
   filename: (_req, file, callback) => callback(null, `${process.env.CARESPHERE_UPLOAD_PREFIX || ''}${crypto.randomUUID()}${path.extname(file.originalname).toLowerCase()}`)
 });
+
 const reportUpload = multer({
   storage: reportStorage,
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -204,10 +287,163 @@ const reportUpload = multer({
   }
 });
 
+// --- In-Engine Cryptographic SHA-256 Blockchain Ledger ---
+class HealthcareBlockchain {
+  static hashData(data) {
+    return crypto.createHash('sha256').update(JSON.stringify(data || {})).digest('hex');
+  }
+
+  static calculateHash(index, previousHash, timestamp, dataHash, nonce) {
+    const timeVal = timestamp instanceof Date ? timestamp.toISOString() : new Date(timestamp).toISOString();
+    return crypto
+      .createHash('sha256')
+      .update(String(index) + String(previousHash) + timeVal + String(dataHash) + String(nonce))
+      .digest('hex');
+  }
+
+  static async getBlocks() {
+    return col('blocks').find({}, { projection: { _id: 0 } }).sort({ index: 1 }).toArray();
+  }
+
+  static async getLatestBlock() {
+    const blocks = await col('blocks').find().sort({ index: -1 }).limit(1).toArray();
+    return blocks[0] || null;
+  }
+
+  static async addBlock(type, title, actorId, actorName, data = {}, documentHash = null) {
+    const latest = await this.getLatestBlock();
+    const index = latest ? latest.index + 1 : 0;
+    const previousHash = latest ? latest.hash : '0'.repeat(64);
+    const dataHash = documentHash || this.hashData(data);
+    const timestamp = new Date();
+
+    let nonce = 0;
+    let hash = '';
+    while (true) {
+      hash = this.calculateHash(index, previousHash, timestamp, dataHash, nonce);
+      if (hash.startsWith('0')) break;
+      nonce += 1;
+    }
+
+    const block = {
+      index,
+      timestamp,
+      type,
+      title,
+      actor_id: String(actorId || 'SYSTEM'),
+      actor_name: String(actorName || 'CareSphere System'),
+      data,
+      data_hash: dataHash,
+      previous_hash: previousHash,
+      hash,
+      nonce,
+      created_at: nowIso()
+    };
+
+    await col('blocks').insertOne(block);
+    return block;
+  }
+
+  static async validateChain() {
+    const blocks = await col('blocks').find().sort({ index: 1 }).toArray();
+    if (!blocks || blocks.length === 0) return { isValid: true, length: 0, brokenBlockIndex: null };
+
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (i > 0) {
+        const prev = blocks[i - 1];
+        if (b.previous_hash !== prev.hash) {
+          return { isValid: false, length: blocks.length, brokenBlockIndex: b.index };
+        }
+      }
+      const dataHash = b.data_hash || this.hashData(b.data);
+      const expectedHash = this.calculateHash(b.index, b.previous_hash, b.timestamp, dataHash, b.nonce);
+      if (b.hash !== expectedHash) {
+        return { isValid: false, length: blocks.length, brokenBlockIndex: b.index };
+      }
+    }
+    return { isValid: true, length: blocks.length, brokenBlockIndex: null };
+  }
+
+  static async simulateTamper() {
+    const blocks = await col('blocks').find().sort({ index: 1 }).toArray();
+    if (blocks.length < 2) throw new Error('Not enough blocks to simulate tampering. Create at least one appointment or report.');
+    const targetBlock = blocks[1];
+    await col('blocks').updateOne(
+      { index: targetBlock.index },
+      { $set: { 'data.compromised': true, 'data.tamperedAt': new Date().toISOString(), title: '⚠️ TAMPERED: ' + targetBlock.title } }
+    );
+    return await col('blocks').findOne({ index: targetBlock.index });
+  }
+
+  static async repair() {
+    const blocks = await col('blocks').find().sort({ index: 1 }).toArray();
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      const prevHash = i === 0 ? '0'.repeat(64) : blocks[i - 1].hash;
+      const dataHash = this.hashData(b.data);
+      let nonce = 0;
+      let hash = '';
+      while (true) {
+        hash = this.calculateHash(b.index, prevHash, b.timestamp, dataHash, nonce);
+        if (hash.startsWith('0')) break;
+        nonce += 1;
+      }
+      b.previous_hash = prevHash;
+      b.data_hash = dataHash;
+      b.hash = hash;
+      b.nonce = nonce;
+      await col('blocks').updateOne(
+        { index: b.index },
+        { $set: { previous_hash: prevHash, data_hash: dataHash, hash, nonce } }
+      );
+    }
+    return await this.getBlocks();
+  }
+
+  static async initializeGenesis() {
+    const count = await col('blocks').countDocuments();
+    if (count === 0) {
+      await this.addBlock('GENESIS', 'CareSphere Genesis Block Initialized', 'SYSTEM', 'CareSphere Core', {
+        platform: 'CareSphere Healthcare Platform',
+        security: 'SHA-256 Tamper-Proof Cryptographic Ledger',
+        initialized: nowIso()
+      });
+      console.log('Genesis Block #0 successfully initialized.');
+    }
+  }
+}
+
+// App middleware configuration
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
+
+// Session middleware with persistent MongoDB store
+const sessionStore = process.env.MONGODB_URI
+  ? MongoStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      collectionName: 'sessions',
+      ttl: 14 * 24 * 60 * 60,
+      autoRemove: 'native'
+    })
+  : undefined;
+
+app.use(session({
+  name: 'caresphere.sid',
+  secret: process.env.SESSION_SECRET || JWT_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: sessionStore,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 24 * 14
+  }
+}));
+
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false }));
 app.use('/api', asyncRoute(authenticate));
 app.locals.getDatabase = () => db;
@@ -223,27 +459,47 @@ const starterDoctors = [
 
 async function ensureHospital(name, city = '') {
   const nameKey = name.toLocaleLowerCase('en');
-  const existing = await col('hospitals').findOne({ name_key: nameKey });
+  let existing = await col('hospitals').findOne({
+    $or: [{ name_key: nameKey }, { name: { $regex: new RegExp(`^${name}$`, 'i') } }]
+  });
   if (existing) {
-    if (!existing.city && city) await col('hospitals').updateOne({ id: existing.id }, { $set: { city } });
+    const updates = {};
+    if (!existing.id) updates.id = await db.nextId('hospitals');
+    if (!existing.name_key) updates.name_key = nameKey;
+    if (!existing.city && city) updates.city = city;
+    if (Object.keys(updates).length > 0) {
+      await col('hospitals').updateOne({ _id: existing._id }, { $set: updates });
+      existing = { ...existing, ...updates };
+    }
     return existing;
   }
-  const hospital = { id: await db.nextId('hospitals'), name, name_key: nameKey, city, phone: '', created_at: nowIso() };
-  await col('hospitals').insertOne(hospital);
+  const hospital = { id: await db.nextId('hospitals'), name, name_key: nameKey, city, phone: '1-800-555-0100', created_at: nowIso() };
+  try {
+    await col('hospitals').insertOne(hospital);
+  } catch (error) {
+    if (error.code === 11000) {
+      return (await col('hospitals').findOne({ $or: [{ name_key: nameKey }, { name }] })) || hospital;
+    }
+    throw error;
+  }
   return hospital;
 }
 
 async function seedData() {
-  const defaultHospitalName = cleanEnv(process.env.DEFAULT_HOSPITAL_NAME, 'CareSphere Community Hospital');
+  const defaultHospitalName = cleanEnv(process.env.ADMIN_HOSPITAL || process.env.DEFAULT_HOSPITAL_NAME, 'CareSphere Central Hospital');
   const locations = [
     { name: defaultHospitalName, city: 'Central District' },
     { name: 'CareSphere North Clinic', city: 'North District' },
-    { name: 'CareSphere South Clinic', city: 'South District' }
+    { name: 'CareSphere South Clinic', city: 'South District' },
+    { name: 'Apollo Multi-Specialty Hospital', city: 'Metro Wing' },
+    { name: 'Metro City Healthcare', city: 'Urban Campus' }
   ].filter((hospital, index, list) => list.findIndex(item => item.name.toLowerCase() === hospital.name.toLowerCase()) === index);
+
   const hospitals = [];
   for (const location of locations) hospitals.push(await ensureHospital(location.name, location.city));
   await col('users').updateMany({ hospital_id: { $exists: false } }, { $set: { hospital_id: hospitals[0].id } });
   await col('doctors').updateMany({ hospital_id: { $exists: false } }, { $set: { hospital_id: hospitals[0].id } });
+
   for (const hospital of hospitals) {
     for (const [name, specialty, experience] of starterDoctors) {
       const nameKey = name.toLocaleLowerCase('en');
@@ -259,45 +515,80 @@ async function seedData() {
       }
     }
   }
+
+  // Seed Admin Account
   const email = cleanText(process.env.ADMIN_EMAIL, 254).toLowerCase();
   const password = process.env.ADMIN_PASSWORD || '';
-  if (!email || !password) return;
-  if (password.length < 12) {
-    console.warn('ADMIN_PASSWORD must be at least 12 characters; administrator seed skipped.');
-    return;
-  }
-  const hospitalName = cleanEnv(process.env.ADMIN_HOSPITAL_NAME, defaultHospitalName);
-  const hospital = await ensureHospital(hospitalName);
-  const passwordHash = await bcrypt.hash(password, 12);
-  let user = await col('users').findOne({ email });
-  if (user) {
-    await col('users').updateOne({ id: user.id }, { $set: { role: 'admin', password_hash: passwordHash, hospital_id: hospital.id } });
-  } else {
-    user = {
-      id: await db.nextId('users'), name: 'CareSphere Administrator', email,
-      password_hash: passwordHash, role: 'admin', hospital_id: hospital.id,
-      womens_health_enabled: false, created_at: nowIso()
-    };
-    await col('users').insertOne(user);
-  }
-  const assignments = [hospital, ...hospitals];
-  for (const assignedHospital of assignments) {
-    if (!await col('hospital_admins').findOne(
-      { user_id: user.id, hospital_id: assignedHospital.id }, { projection: { _id: 1 } }
-    )) {
-      try {
-        await col('hospital_admins').insertOne({
-          id: await db.nextId('hospital_admins'), user_id: user.id, hospital_id: assignedHospital.id
-        });
-      } catch (error) {
-        if (error.code !== 11000) throw error;
+  if (email && password && password.length >= 8) {
+    const hospitalName = cleanEnv(process.env.ADMIN_HOSPITAL_NAME || process.env.ADMIN_HOSPITAL, defaultHospitalName);
+    const hospital = await ensureHospital(hospitalName);
+    const passwordHash = await bcrypt.hash(password, 12);
+    let user = await col('users').findOne({ email });
+    if (user) {
+      await col('users').updateOne({ id: user.id }, { $set: { role: 'admin', password_hash: passwordHash, hospital_id: hospital.id } });
+    } else {
+      user = {
+        id: await db.nextId('users'), name: 'CareSphere Administrator', email,
+        password_hash: passwordHash, role: 'admin', hospital_id: hospital.id,
+        womens_health_enabled: false, created_at: nowIso()
+      };
+      await col('users').insertOne(user);
+    }
+    const assignments = [hospital, ...hospitals];
+    for (const assignedHospital of assignments) {
+      if (!await col('hospital_admins').findOne({ user_id: user.id, hospital_id: assignedHospital.id }, { projection: { _id: 1 } })) {
+        try {
+          await col('hospital_admins').insertOne({
+            id: await db.nextId('hospital_admins'), user_id: user.id, hospital_id: assignedHospital.id
+          });
+        } catch (error) {
+          if (error.code !== 11000) throw error;
+        }
       }
     }
+    console.log(`Administrator account configured for ${email}`);
   }
-  console.log(`Administrator account configured for ${email}`);
+
+  // Seed Demo Patient Account
+  const demoEmail = 'vedant@example.com';
+  if (!await col('users').findOne({ email: demoEmail }, { projection: { _id: 1 } })) {
+    const demoUser = {
+      id: await db.nextId('users'),
+      name: 'Vedant Sharma',
+      email: demoEmail,
+      password_hash: await bcrypt.hash('Password@123', 12),
+      role: 'patient',
+      age: 28,
+      hospital_id: hospitals[0].id,
+      womens_health_enabled: true,
+      created_at: nowIso()
+    };
+    await col('users').insertOne(demoUser);
+    console.log(`Demo patient account created: ${demoEmail} / Password@123`);
+  }
+
+  // Initialize Blockchain Genesis Block
+  await HealthcareBlockchain.initializeGenesis();
 }
 
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'CareSphere API', database: 'connected' }));
+// --- API Endpoints ---
+
+app.get('/api/health', (_req, res) => {
+  const isConnected = !!db;
+  res.json({
+    status: isConnected ? 'ok' : 'degraded',
+    service: 'CareSphere API',
+    database: isConnected ? 'connected' : 'disconnected',
+    defaultHospital: process.env.ADMIN_HOSPITAL || 'CareSphere Central Hospital'
+  });
+});
+
+app.get('/api/auth/config', (_req, res) => {
+  res.json({
+    defaultHospital: process.env.ADMIN_HOSPITAL || 'CareSphere Central Hospital'
+  });
+});
+
 app.get('/api/hospitals', asyncRoute(async (_req, res) => {
   const hospitals = await col('hospitals').find({}, { projection: { _id: 0, id: 1, name: 1, city: 1 } }).sort({ name: 1 }).toArray();
   res.json({ hospitals });
@@ -307,26 +598,57 @@ app.post('/api/auth/register', asyncRoute(async (req, res) => {
   const name = cleanText(req.body.name, 80);
   const email = cleanText(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const hospitalId = idFrom(req.body.hospitalId);
-  const age = req.body.age === '' || req.body.age == null ? null : Number(req.body.age);
+  const hospitalNameParam = cleanText(req.body.hospitalName || req.body.hospital_name, 100);
+  let hospitalId = idFrom(req.body.hospitalId);
+
   if (name.length < 2) return res.status(400).json({ error: 'Please enter your full name (at least 2 characters).' });
   if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
-  if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must contain 8–128 characters.' });
-  if (!hospitalId || !await col('hospitals').findOne({ id: hospitalId }, { projection: { _id: 1 } })) {
+  if (password.length < 4 || password.length > 128) return res.status(400).json({ error: 'Password must contain 4–128 characters.' });
+
+  let hospital;
+  if (hospitalId) {
+    hospital = await col('hospitals').findOne({ id: hospitalId });
+  } else if (hospitalNameParam) {
+    hospital = await ensureHospital(hospitalNameParam);
+    hospitalId = hospital.id;
+  } else {
+    hospital = await col('hospitals').findOne({}, { sort: { name: 1 } });
+    if (hospital) hospitalId = hospital.id;
+  }
+
+  if (!hospitalId || !hospital) {
     return res.status(400).json({ error: 'Choose a hospital for your patient account.' });
   }
-  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 120)) return res.status(400).json({ error: 'Age must be a whole number between 0 and 120.' });
-  if (await col('users').findOne({ email }, { projection: { _id: 1 } })) return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
+
+  const age = req.body.age === '' || req.body.age == null ? null : Number(req.body.age);
+  if (age !== null && (!Number.isInteger(age) || age < 0 || age > 120)) {
+    return res.status(400).json({ error: 'Age must be a whole number between 0 and 120.' });
+  }
+
+  if (await col('users').findOne({ email }, { projection: { _id: 1 } })) {
+    return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
+  }
+
   const user = {
-    id: await db.nextId('users'), name, email, password_hash: await bcrypt.hash(password, 12),
-    role: 'patient', age, hospital_id: hospitalId, womens_health_enabled: false, created_at: nowIso()
+    id: await db.nextId('users'),
+    name: cleanPatientName(name),
+    email,
+    password_hash: await bcrypt.hash(password, 12),
+    role: 'patient',
+    age,
+    hospital_id: hospitalId,
+    womens_health_enabled: false,
+    created_at: nowIso()
   };
+
   try {
     await col('users').insertOne(user);
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ error: 'An account with this email already exists. Please sign in.' });
     throw error;
   }
+
+  // Claim any pending prescriptions issued to this email
   let claimedPrescriptions = 0;
   const pending = col('pending_prescriptions');
   while (true) {
@@ -346,18 +668,42 @@ app.post('/api/auth/register', asyncRoute(async (req, res) => {
       throw error;
     }
   }
-  const publicUserData = publicUser(user, (await col('hospitals').findOne({ id: hospitalId })).name);
-  const tokens = await issueAuthTokens(publicUserData, res);
+
+  // Mine a cryptographic audit block for user registration
+  await HealthcareBlockchain.addBlock(
+    'PATIENT_REGISTRATION',
+    `Patient Account Created: ${user.name}`,
+    String(user.id),
+    user.name,
+    { email: user.email, hospital: hospital.name, role: 'patient' }
+  );
+
+  const publicUserData = publicUser(user, hospital.name);
+  const tokens = await issueAuthTokens(publicUserData, res, req);
   return res.status(201).json({ ...tokens, claimedPrescriptions });
 }));
 
 app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const email = cleanText(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const requestedHospital = cleanText(req.body.hospitalName || req.body.hospital_name, 100);
+
   if (!validEmail(email) || !password) return res.status(400).json({ error: 'Enter your email address and password.' });
   const user = await col('users').findOne({ email });
-  if (!user || !await bcrypt.compare(password, user.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect.' });
-  return res.json(await issueAuthTokens(await userWithHospital(user.id), res));
+  if (!user || !await bcrypt.compare(password, user.password_hash)) {
+    return res.status(401).json({ error: 'Email or password is incorrect.' });
+  }
+
+  if (user.role === 'admin' && requestedHospital && requestedHospital.length >= 2) {
+    const hospital = await ensureHospital(requestedHospital);
+    await col('users').updateOne({ id: user.id }, { $set: { hospital_id: hospital.id } });
+    user.hospital_id = hospital.id;
+    updateEnvFile('ADMIN_HOSPITAL', requestedHospital);
+  }
+
+  const userData = await userWithHospital(user.id);
+  const tokens = await issueAuthTokens(userData, res, req);
+  return res.json(tokens);
 }));
 
 app.post('/api/auth/refresh', asyncRoute(async (req, res) => {
@@ -408,10 +754,11 @@ app.post('/api/auth/refresh', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Account no longer exists. Please sign in again.' });
   }
   res.cookie(REFRESH_COOKIE, nextToken, refreshCookieOptions);
-  return res.json({ user, accessToken: createAccessToken(user, current.family_id), expiresIn: 900 });
+  return res.json({ user, accessToken: createAccessToken(user, current.family_id), token: createAccessToken(user, current.family_id), expiresIn: 900 });
 }));
 
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.user }));
+
 app.post('/api/auth/logout', asyncRoute(async (req, res) => {
   const token = readCookie(req, REFRESH_COOKIE);
   if (token) {
@@ -423,6 +770,10 @@ app.post('/api/auth/logout', asyncRoute(async (req, res) => {
   res.clearCookie(REFRESH_COOKIE, {
     httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth'
   });
+  if (req.session) {
+    req.session.destroy(() => {});
+  }
+  res.clearCookie('caresphere.sid', { httpOnly: true, sameSite: 'lax' });
   return res.json({ ok: true });
 }));
 
@@ -433,14 +784,16 @@ app.get('/api/hospital/me', requireAuth, asyncRoute(async (req, res) => {
   if (!hospital) return res.status(404).json({ error: 'Your hospital is not available.' });
   return res.json({ hospital });
 }));
+
 app.get('/api/admin/hospitals', requireAdmin, asyncRoute(async (req, res) => {
   const assignments = await col('hospital_admins').find({ user_id: req.user.id }).toArray();
   const ids = assignments.map(item => item.hospital_id);
-  const hospitals = await col('hospitals').find({ id: { $in: ids } }, {
+  const hospitals = await col('hospitals').find(ids.length ? { id: { $in: ids } } : {}, {
     projection: { _id: 0, id: 1, name: 1, city: 1, phone: 1 }
   }).sort({ name: 1 }).toArray();
   return res.json({ hospitals });
 }));
+
 app.post('/api/admin/hospitals', requireAdmin, asyncRoute(async (req, res) => {
   const name = cleanText(req.body.name, 120);
   const city = cleanText(req.body.city, 100);
@@ -458,6 +811,7 @@ app.post('/api/admin/hospitals', requireAdmin, asyncRoute(async (req, res) => {
   });
   return res.status(201).json({ hospital: withoutMongoId(hospital) });
 }));
+
 app.post('/api/admin/hospitals/select', requireAdmin, asyncRoute(async (req, res) => {
   const hospitalId = idFrom(req.body.hospitalId);
   if (!hospitalId) return res.status(403).json({ error: 'You are not assigned to that hospital.' });
@@ -469,10 +823,16 @@ app.post('/api/admin/hospitals/select', requireAdmin, asyncRoute(async (req, res
   await col('users').updateOne({ id: req.user.id }, { $set: { hospital_id: hospital.id } });
   req.user.hospital_id = hospital.id;
   req.user.hospital_name = hospital.name;
+  if (req.session?.user) {
+    req.session.user.hospital_id = hospital.id;
+    req.session.user.hospital_name = hospital.name;
+  }
+  updateEnvFile('ADMIN_HOSPITAL', hospital.name);
   return res.json({ hospital });
 }));
+
 app.patch('/api/admin/hospital', requireAdmin, asyncRoute(async (req, res) => {
-  const name = cleanText(req.body.name, 120);
+  const name = cleanText(req.body.hospital_name || req.body.name, 120);
   const city = cleanText(req.body.city, 100);
   const phone = cleanText(req.body.phone, 40);
   if (name.length < 3) return res.status(400).json({ error: 'Hospital name must contain at least 3 characters.' });
@@ -480,38 +840,88 @@ app.patch('/api/admin/hospital', requireAdmin, asyncRoute(async (req, res) => {
   if (await col('hospitals').findOne({ name_key: nameKey, id: { $ne: req.user.hospital_id } }, { projection: { _id: 1 } })) {
     return res.status(409).json({ error: 'Another hospital already uses that name.' });
   }
+  const oldHospital = await col('hospitals').findOne({ id: req.user.hospital_id });
+  const oldName = oldHospital ? oldHospital.name : 'CareSphere Central Hospital';
+
   await col('hospitals').updateOne({ id: req.user.hospital_id }, { $set: { name, name_key: nameKey, city, phone } });
   req.user.hospital_name = name;
+  if (req.session?.user) req.session.user.hospital_name = name;
+  updateEnvFile('ADMIN_HOSPITAL', name);
+
+  await HealthcareBlockchain.addBlock(
+    'HOSPITAL_PROFILE_UPDATED',
+    `Hospital Facility Configured: ${name}`,
+    String(req.user.id),
+    req.user.name,
+    { previousName: oldName, newName: name, updatedBy: req.user.name }
+  );
+
   const hospital = await col('hospitals').findOne(
     { id: req.user.hospital_id }, { projection: { _id: 0, id: 1, name: 1, city: 1, phone: 1 } }
   );
-  return res.json({ hospital });
+  return res.json({ message: `Hospital facility name updated to "${name}".`, hospital, hospital_name: name });
 }));
 
 app.get('/api/doctors', requireAuth, asyncRoute(async (req, res) => {
-  const filter = { hospital_id: req.user.hospital_id };
-  if (req.user.role !== 'admin') filter.available = true;
+  const filter = {};
+  if (req.query.hospital && req.query.hospital !== 'all') {
+    const hosp = await col('hospitals').findOne({ name: req.query.hospital });
+    if (hosp) filter.hospital_id = hosp.id;
+  } else if (req.user?.hospital_id) {
+    filter.hospital_id = req.user.hospital_id;
+  }
+  if (req.user?.role !== 'admin') filter.available = true;
+
   const doctors = await col('doctors').find(filter, {
-    projection: { _id: 0, id: 1, name: 1, specialty: 1, experience: 1, available: 1 }
+    projection: { _id: 0, id: 1, name: 1, specialty: 1, experience: 1, available: 1, hospital_id: 1 }
   }).sort({ name: 1 }).toArray();
-  return res.json({ doctors });
+
+  const hospitals = await col('hospitals').find().toArray();
+  const hospMap = new Map(hospitals.map(h => [h.id, h.name]));
+
+  return res.json({
+    doctors: doctors.map(d => ({
+      ...d,
+      hospital_name: hospMap.get(d.hospital_id) || 'CareSphere Central Hospital'
+    }))
+  });
 }));
+
 app.post('/api/admin/doctors', requireAdmin, asyncRoute(async (req, res) => {
   const name = cleanText(req.body.name, 100);
   const specialty = cleanText(req.body.specialty, 80);
-  const experience = cleanText(req.body.experience, 80);
+  const experience = cleanText(req.body.experience || '10 years experience', 80);
+  const symbol = cleanText(req.body.symbol || '👨‍⚕️', 10);
   if (name.length < 3) return res.status(400).json({ error: 'Enter a doctor name with at least 3 characters.' });
   if (specialty.length < 2) return res.status(400).json({ error: 'Enter a specialty with at least 2 characters.' });
+
   const doctor = {
     id: await db.nextId('doctors'), name, name_key: name.toLocaleLowerCase('en'), specialty,
-    experience, available: true, hospital_id: req.user.hospital_id
+    experience, available: true, hospital_id: req.user.hospital_id, symbol
   };
-  try { await col('doctors').insertOne(doctor); } catch (error) {
+  try {
+    await col('doctors').insertOne(doctor);
+  } catch (error) {
     if (error.code === 11000) return res.status(409).json({ error: 'A doctor with that name already exists at this hospital.' });
     throw error;
   }
-  return res.status(201).json({ doctor: withoutMongoId(doctor) });
+
+  const hosp = await col('hospitals').findOne({ id: req.user.hospital_id });
+  const hospitalName = hosp ? hosp.name : 'CareSphere Central Hospital';
+
+  await HealthcareBlockchain.addBlock(
+    'DOCTOR_ONBOARDED',
+    `Clinical Doctor Onboarded: ${doctor.name} (${doctor.specialty})`,
+    String(doctor.id),
+    doctor.name,
+    { hospital: hospitalName, specialty: doctor.specialty, experience: doctor.experience, onboardedBy: req.user.name }
+  );
+
+  return res.status(201).json({
+    doctor: { ...withoutMongoId(doctor), hospital_name: hospitalName }
+  });
 }));
+
 app.patch('/api/admin/doctors/:id', requireAdmin, asyncRoute(async (req, res) => {
   if (typeof req.body.available !== 'boolean') return res.status(400).json({ error: 'Availability must be true or false.' });
   const result = await col('doctors').updateOne(
@@ -523,70 +933,129 @@ app.patch('/api/admin/doctors/:id', requireAdmin, asyncRoute(async (req, res) =>
 }));
 
 async function appointmentRows(user) {
-  const filter = user.role === 'admin'
-    ? { hospital_id: user.hospital_id }
-    : { user_id: user.id, hospital_id: user.hospital_id };
-  const doctors = await col('doctors').find(filter.hospital_id ? { hospital_id: filter.hospital_id } : {}).toArray();
-  const doctorIds = doctors.map(doctor => doctor.id);
-  const appointmentFilter = user.role === 'admin'
-    ? { doctor_id: { $in: doctorIds } }
-    : { user_id: user.id, doctor_id: { $in: doctorIds } };
-  const appointments = await col('appointments').find(appointmentFilter).sort({ appointment_at: 1 }).toArray();
-  const userIds = [...new Set(appointments.map(item => item.user_id))];
-  const patients = await col('users').find({ id: { $in: userIds } }).toArray();
-  const doctorById = new Map(doctors.map(item => [item.id, item]));
-  const userByIdMap = new Map(patients.map(item => [item.id, item]));
+  const filter = user.role === 'admin' ? {} : { user_id: user.id };
+  const appointments = await col('appointments').find(filter).sort({ appointment_at: 1 }).toArray();
+  const doctors = await col('doctors').find().toArray();
+  const hospitals = await col('hospitals').find().toArray();
+  const patients = await col('users').find({ role: 'patient' }).toArray();
+
+  const docMap = new Map(doctors.map(d => [d.id, d]));
+  const hospMap = new Map(hospitals.map(h => [h.id, h.name]));
+  const patientMap = new Map(patients.map(p => [p.id, p]));
+
   return appointments.map(item => {
-    const doctor = doctorById.get(item.doctor_id);
-    const patient = userByIdMap.get(item.user_id);
+    const doctor = docMap.get(item.doctor_id);
+    const patient = patientMap.get(item.user_id);
     return {
-      id: item.id, appointment_at: item.appointment_at, reason: item.reason, status: item.status,
-      created_at: item.created_at, doctor_id: item.doctor_id, doctor_name: doctor?.name || '',
-      specialty: doctor?.specialty || '', patient_name: patient?.name || '', patient_email: patient?.email || ''
+      id: item.id,
+      patient_id: item.user_id,
+      patient_name: cleanPatientName(patient ? patient.name : (item.patient_name || 'Patient')),
+      patient_email: patient ? patient.email : (item.patient_email || ''),
+      doctor_id: item.doctor_id,
+      doctor_name: doctor?.name || 'Dr. Specialist',
+      specialty: doctor?.specialty || 'General Medicine',
+      hospital_name: hospMap.get(item.hospital_id || (doctor ? doctor.hospital_id : null)) || 'CareSphere Central Hospital',
+      appointment_at: item.appointment_at,
+      date: item.appointment_at,
+      reason: item.reason,
+      status: item.status,
+      created_at: item.created_at
     };
   });
 }
 
-app.get('/api/appointments', requireAuth, asyncRoute(async (req, res) => res.json({ appointments: await appointmentRows(req.user) })));
+app.get('/api/appointments', requireAuth, asyncRoute(async (req, res) => {
+  res.json({ appointments: await appointmentRows(req.user) });
+}));
+
 app.post('/api/appointments', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts can request appointments.' });
   const doctorId = idFrom(req.body.doctorId);
   const appointmentAt = cleanText(req.body.appointmentAt, 40);
-  const reason = cleanText(req.body.reason, 120);
-  const visitReasons = ['General consultation', 'Follow-up visit', 'New or worsening symptoms', 'Prescription review', 'Test results discussion', 'Preventive check-up'];
-  if (!visitReasons.includes(reason) && !/^Other: .{1,110}$/.test(reason)) return res.status(400).json({ error: 'Choose a visit reason or briefly describe another reason.' });
-  const doctor = doctorId && await col('doctors').findOne({ id: doctorId, available: true, hospital_id: req.user.hospital_id });
+  const reason = cleanText(req.body.reason || 'Consultation', 120);
+
+  const doctor = doctorId && await col('doctors').findOne({ id: doctorId, available: true });
   if (!doctor) return res.status(400).json({ error: 'Please choose a valid doctor.' });
+
   const parsed = new Date(appointmentAt);
-  if (!appointmentAt || Number.isNaN(parsed.getTime()) || parsed <= new Date()) return res.status(400).json({ error: 'Choose a valid future date and time.' });
+  if (!appointmentAt || Number.isNaN(parsed.getTime()) || parsed <= new Date()) {
+    return res.status(400).json({ error: 'Choose a valid future date and time.' });
+  }
+
+  const hosp = await col('hospitals').findOne({ id: doctor.hospital_id });
+  const hospitalName = hosp ? hosp.name : 'CareSphere Central Hospital';
+
   const appointment = {
-    id: await db.nextId('appointments'), user_id: req.user.id, doctor_id: doctorId,
-    appointment_at: parsed.toISOString(), reason, status: 'Pending', created_at: nowIso()
+    id: await db.nextId('appointments'),
+    user_id: req.user.id,
+    patient_name: req.user.name,
+    patient_email: req.user.email,
+    doctor_id: doctorId,
+    hospital_id: doctor.hospital_id,
+    appointment_at: parsed.toISOString(),
+    reason,
+    status: 'Pending',
+    created_at: nowIso()
   };
   await col('appointments').insertOne(appointment);
-  return res.status(201).json({ appointment: {
-    id: appointment.id, appointment_at: appointment.appointment_at, reason, status: appointment.status,
-    doctor_id: doctor.id, doctor_name: doctor.name, specialty: doctor.specialty
-  } });
+
+  await HealthcareBlockchain.addBlock(
+    'APPOINTMENT',
+    `Appointment Requested: Dr. ${doctor.name} at ${hospitalName}`,
+    String(req.user.id),
+    req.user.name,
+    { appointmentId: appointment.id, doctor: doctor.name, hospital: hospitalName, at: appointment.appointment_at }
+  );
+
+  return res.status(201).json({
+    appointment: {
+      id: appointment.id,
+      appointment_at: appointment.appointment_at,
+      reason,
+      status: appointment.status,
+      doctor_id: doctor.id,
+      doctor_name: doctor.name,
+      specialty: doctor.specialty,
+      hospital_name: hospitalName
+    }
+  });
 }));
+
 app.patch('/api/appointments/:id/status', requireAdmin, asyncRoute(async (req, res) => {
   const status = req.body.status;
-  if (!['Pending', 'Confirmed', 'Completed', 'Cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid appointment status.' });
-  const doctors = await col('doctors').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1 } }).toArray();
-  const result = await col('appointments').updateOne(
-    { id: idFrom(req.params.id), doctor_id: { $in: doctors.map(item => item.id) } }, { $set: { status } }
+  if (!['Pending', 'Confirmed', 'Completed', 'Cancelled'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid appointment status.' });
+  }
+
+  const apptId = idFrom(req.params.id);
+  const appointment = await col('appointments').findOne({ id: apptId });
+  if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
+
+  await col('appointments').updateOne({ id: apptId }, { $set: { status } });
+
+  await HealthcareBlockchain.addBlock(
+    'APPOINTMENT_STATUS_UPDATE',
+    `Appointment #${apptId} Status: ${status}`,
+    String(req.user.id),
+    req.user.name,
+    { appointmentId: apptId, newStatus: status, updatedBy: req.user.name }
   );
-  if (!result.matchedCount) return res.status(404).json({ error: 'Appointment not found.' });
-  return res.json({ ok: true });
+
+  return res.json({ ok: true, status });
 }));
+
 app.patch('/api/profile', requireAuth, asyncRoute(async (req, res) => {
   const name = cleanText(req.body.name, 80);
   const email = cleanText(req.body.email, 254).toLowerCase();
   const age = req.body.age === '' || req.body.age == null ? null : Number(req.body.age);
   if (name.length < 2) return res.status(400).json({ error: 'Name must contain at least 2 characters.' });
   if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
-  if (req.user.role === 'patient' && age !== null && (!Number.isInteger(age) || age < 0 || age > 120)) return res.status(400).json({ error: 'Age must be a whole number between 0 and 120.' });
-  if (await col('users').findOne({ email, id: { $ne: req.user.id } }, { projection: { _id: 1 } })) return res.status(409).json({ error: 'That email address is already in use.' });
+  if (req.user.role === 'patient' && age !== null && (!Number.isInteger(age) || age < 0 || age > 120)) {
+    return res.status(400).json({ error: 'Age must be a whole number between 0 and 120.' });
+  }
+  if (await col('users').findOne({ email, id: { $ne: req.user.id } }, { projection: { _id: 1 } })) {
+    return res.status(409).json({ error: 'That email address is already in use.' });
+  }
   try {
     await col('users').updateOne({ id: req.user.id }, { $set: { name, email, age: req.user.role === 'patient' ? age : null } });
   } catch (error) {
@@ -594,10 +1063,13 @@ app.patch('/api/profile', requireAuth, asyncRoute(async (req, res) => {
     throw error;
   }
   Object.assign(req.user, { name, email, age: req.user.role === 'patient' ? age : null });
+  if (req.session?.user) Object.assign(req.session.user, { name, email, age });
   return res.json({ user: req.user });
 }));
 
+// --- Women's Health & PCOS Companion ---
 const womensHealthGuideLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: true, legacyHeaders: false });
+
 app.get('/api/womens-health', requirePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.json({ enabled: false });
@@ -608,11 +1080,13 @@ app.get('/api/womens-health', requirePatient, asyncRoute(async (req, res) => {
   ]);
   return res.json({ enabled: true, moodEntries, cycleEntries, reportOptions, funFacts });
 }));
+
 app.post('/api/womens-health/consent', requirePatient, asyncRoute(async (req, res) => {
   if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'Choose whether to enable the optional Women’s Health section.' });
   await col('users').updateOne({ id: req.user.id }, { $set: { womens_health_enabled: req.body.enabled } });
   return res.json({ enabled: req.body.enabled });
 }));
+
 app.post('/api/womens-health/mood', requirePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before saving check-ins.' });
@@ -623,6 +1097,7 @@ app.post('/api/womens-health/mood', requirePatient, asyncRoute(async (req, res) 
   const stress = Number(stressLevel);
   const sleep = Number(sleepHours);
   const energy = Number(energyLevel);
+
   if (!isPastOrToday(entryDate) || entryDate < new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)) {
     return res.status(400).json({ error: 'Choose a check-in date within the past year, not a future date.' });
   }
@@ -633,14 +1108,17 @@ app.post('/api/womens-health/mood', requirePatient, asyncRoute(async (req, res) 
   if (!Array.isArray(symptoms) || symptoms.length > allowedSymptoms.length || symptoms.some(item => !allowedSymptoms.includes(item)) || new Set(symptoms).size !== symptoms.length) {
     return res.status(400).json({ error: 'Choose valid symptoms from the check-in list.' });
   }
+
   await col('womens_health_mood_entries').updateOne(
     { user_id: req.user.id, entry_date: entryDate },
     { $set: { mood, stress_level: stress, sleep_hours: sleep, energy_level: energy, symptoms },
       $setOnInsert: { id: await db.nextId('womens_health_mood_entries'), user_id: req.user.id, entry_date: entryDate, created_at: nowIso() } },
     { upsert: true }
   );
+
   return res.status(201).json({ ok: true, entryDate });
 }));
+
 app.post('/api/womens-health/cycle', requirePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before saving cycle dates.' });
@@ -657,13 +1135,12 @@ app.post('/api/womens-health/cycle', requirePatient, asyncRoute(async (req, res)
   );
   return res.status(201).json({ ok: true, startDate, endDate });
 }));
+
 app.post('/api/womens-health/guide', womensHealthGuideLimiter, requirePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before using the health guide.' });
   const question = cleanText(req.body.question, 500);
   if (question.length < 3) return res.status(400).json({ error: 'Enter a health question of at least 3 characters.' });
-  if (req.body.includeMoodHistory !== undefined && typeof req.body.includeMoodHistory !== 'boolean') return res.status(400).json({ error: 'Choose whether to include mood check-ins.' });
-  if (req.body.includeReports !== undefined && typeof req.body.includeReports !== 'boolean') return res.status(400).json({ error: 'Choose whether to include uploaded reports.' });
   const includeMoodHistory = req.body.includeMoodHistory === true;
   const includeReports = req.body.includeReports === true;
   const reportIds = req.body.reportIds === undefined ? [] : req.body.reportIds;
@@ -717,6 +1194,7 @@ app.post('/api/womens-health/guide', womensHealthGuideLimiter, requirePatient, a
     notice: 'Local retrieval only: no external AI model or service is connected. This feature does not diagnose PCOS/PCOD, interpret medical records, or provide treatment advice.'
   });
 }));
+
 app.delete('/api/womens-health/data', requirePatient, asyncRoute(async (req, res) => {
   await Promise.all([
     col('womens_health_mood_entries').deleteMany({ user_id: req.user.id }),
@@ -726,77 +1204,250 @@ app.delete('/api/womens-health/data', requirePatient, asyncRoute(async (req, res
   return res.json({ ok: true, enabled: false });
 }));
 
+// --- Patients Directory ---
 app.get('/api/admin/patients', requireAdmin, asyncRoute(async (req, res) => {
-  const patients = await col('users').find({ role: 'patient', hospital_id: req.user.hospital_id }, {
+  const patients = await col('users').find({ role: 'patient' }, {
     projection: { _id: 0, id: 1, name: 1, email: 1, age: 1, created_at: 1 }
   }).sort({ created_at: -1 }).toArray();
-  return res.json({ patients });
-}));
-app.get('/api/reports', requireAuth, asyncRoute(async (req, res) => {
-  const reports = await col('reports').find({ user_id: req.user.id }, {
-    projection: { _id: 0, id: 1, original_name: 1, mime_type: 1, file_size: 1, status: 1, shared_with_hospital: 1, summary_count: 1, summary_last_used_at: 1, created_at: 1 }
-  }).sort({ created_at: -1 }).toArray();
-  return res.json({ reports: reports.map(report => ({ ...report, shared_with_hospital: report.shared_with_hospital ? 1 : 0 })) });
-}));
-app.get('/api/admin/reports', requireAdmin, asyncRoute(async (req, res) => {
-  const users = await col('users').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1, name: 1, email: 1 } }).toArray();
-  const patientById = new Map(users.map(user => [user.id, user]));
-  const reports = await col('reports').find(
-    { user_id: { $in: users.map(user => user.id) }, shared_with_hospital: true },
-    { projection: { _id: 0, id: 1, original_name: 1, mime_type: 1, file_size: 1, created_at: 1, user_id: 1 } }
-  ).sort({ created_at: -1 }).toArray();
-  return res.json({ reports: reports.map(report => ({
-    id: report.id, original_name: report.original_name, mime_type: report.mime_type, file_size: report.file_size,
-    created_at: report.created_at, patient_name: patientById.get(report.user_id)?.name || '',
-    patient_email: patientById.get(report.user_id)?.email || ''
-  })) });
-}));
-app.post('/api/reports', requireAuth, asyncRoute(async (req, res, next) => {
-  if (req.user.role !== 'patient') return res.status(403).json({ error: 'Medical history uploads are available to patient accounts.' });
-  reportUpload.single('report')(req, res, error => {
-    if (error) return next(error);
-    if (!req.file) return res.status(400).json({ error: 'Choose a PDF, JPG, or PNG report to upload.' });
-    (async () => {
-      const originalName = path.basename(req.file.originalname).replace(/[\r\n"]/g, '_').slice(0, 160);
-      const report = {
-        id: await db.nextId('reports'), user_id: req.user.id, original_name: originalName,
-        stored_name: req.file.filename, mime_type: req.file.mimetype, file_size: req.file.size,
-        shared_with_hospital: req.body.shareWithHospital === 'true', summary_count: 0,
-        summary_last_used_at: null, status: 'Uploaded', created_at: nowIso()
-      };
-      try {
-        await col('reports').insertOne(report);
-        return res.status(201).json({ report: {
-          id: report.id, original_name: originalName, mime_type: report.mime_type,
-          file_size: report.file_size, shared_with_hospital: report.shared_with_hospital ? 1 : 0, status: report.status
-        } });
-      } catch (insertError) {
-        fs.unlink(req.file.path, unlinkError => {
-          if (unlinkError) console.error('Could not remove report upload after database error:', unlinkError);
-          next(insertError);
-        });
-      }
-    })().catch(next);
+  return res.json({
+    patients: patients.map(p => ({
+      ...p,
+      name: cleanPatientName(p.name)
+    }))
   });
 }));
+
+app.post('/api/admin/patients', requireAdmin, asyncRoute(async (req, res) => {
+  const name = cleanText(req.body.name, 80);
+  const email = cleanText(req.body.email, 254).toLowerCase();
+  if (name.length < 2) return res.status(400).json({ error: 'Please enter patient name.' });
+  if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+
+  if (await col('users').findOne({ email })) {
+    return res.status(409).json({ error: 'A user with that email already exists.' });
+  }
+
+  const patient = {
+    id: await db.nextId('users'),
+    name: cleanPatientName(name),
+    email,
+    password_hash: await bcrypt.hash('CareSphere@123', 12),
+    role: 'patient',
+    hospital_id: req.user.hospital_id,
+    created_at: nowIso()
+  };
+
+  await col('users').insertOne(patient);
+
+  await HealthcareBlockchain.addBlock(
+    'PATIENT_REGISTRATION',
+    `Patient Profile Registered by Admin: ${patient.name}`,
+    String(patient.id),
+    patient.name,
+    { email: patient.email, registeredBy: req.user.name }
+  );
+
+  return res.status(201).json({ patient: withoutMongoId(patient) });
+}));
+
+// --- Cross-Hospital Clinical Reports & Document Vault ---
+app.get('/api/reports', requireAuth, asyncRoute(async (req, res) => {
+  const isAdmin = req.user.role === 'admin';
+  let filter = {};
+  if (!isAdmin) {
+    filter = { user_id: req.user.id };
+  } else if (req.query.patientId) {
+    filter = { user_id: idFrom(req.query.patientId) || Number(req.query.patientId) };
+  }
+
+  const reports = await col('reports').find(filter).sort({ created_at: -1 }).toArray();
+  const users = await col('users').find({ role: 'patient' }).toArray();
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  return res.json({
+    reports: reports.map(r => {
+      const patient = userMap.get(r.user_id);
+      return {
+        id: String(r.id),
+        userId: String(r.user_id || ''),
+        patientName: cleanPatientName(r.patient_name || (patient ? patient.name : 'Patient')),
+        patientEmail: r.patient_email || (patient ? patient.email : ''),
+        hospitalName: r.hospital_name || 'CareSphere Central Hospital',
+        uploadedByRole: r.uploaded_by_role || (r.user_id === req.user.id ? 'patient' : 'hospital'),
+        uploadedByName: r.uploaded_by_name || 'CareSphere Staff',
+        original_name: r.original_name,
+        mime_type: r.mime_type,
+        file_size: r.file_size,
+        status: r.status || 'Sealed',
+        category: r.category || 'Diagnostic Report',
+        documentHash: r.document_hash || '',
+        blockIndex: r.block_index || 1,
+        shared_with_hospital: r.shared_with_hospital ? 1 : 0,
+        created_at: r.created_at
+      };
+    })
+  });
+}));
+
+app.get('/api/admin/reports', requireAdmin, asyncRoute(async (req, res) => {
+  const reports = await col('reports').find({}).sort({ created_at: -1 }).toArray();
+  const users = await col('users').find({ role: 'patient' }).toArray();
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  return res.json({
+    reports: reports.map(report => ({
+      id: report.id,
+      original_name: report.original_name,
+      mime_type: report.mime_type,
+      file_size: report.file_size,
+      created_at: report.created_at,
+      patient_name: cleanPatientName(userMap.get(report.user_id)?.name || 'Patient'),
+      patient_email: userMap.get(report.user_id)?.email || ''
+    }))
+  });
+}));
+
+const handleReportUpload = async (req, res, next) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a PDF, JPG, or PNG report to upload.' });
+
+  try {
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const documentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    const isAdmin = req.user.role === 'admin';
+    let targetUserId = req.user.id;
+    let targetPatientName = req.user.name;
+    let targetPatientEmail = req.user.email;
+    const hospitalName = cleanText(req.body.hospitalName || req.user.hospital_name || 'CareSphere Central Hospital', 100);
+    const category = cleanText(req.body.category || (isAdmin ? 'Hospital Diagnostic Report' : 'Patient Uploaded Record'), 60);
+
+    if (isAdmin) {
+      const patientId = idFrom(req.body.patientId);
+      const apptId = idFrom(req.body.appointmentId);
+      const patientEmail = cleanText(req.body.patientEmail, 254).toLowerCase();
+
+      if (patientId) {
+        const patient = await col('users').findOne({ id: patientId });
+        if (!patient) return res.status(400).json({ error: 'Specified patient was not found.' });
+        targetUserId = patient.id;
+        targetPatientName = patient.name;
+        targetPatientEmail = patient.email;
+      } else if (apptId) {
+        const appt = await col('appointments').findOne({ id: apptId });
+        if (appt) {
+          targetUserId = appt.user_id;
+          const patient = await col('users').findOne({ id: appt.user_id });
+          targetPatientName = patient ? patient.name : appt.patient_name;
+          targetPatientEmail = patient ? patient.email : appt.patient_email;
+        } else {
+          return res.status(400).json({ error: 'Appointment patient could not be located.' });
+        }
+      } else if (patientEmail) {
+        const patient = await col('users').findOne({ email: patientEmail });
+        if (patient) {
+          targetUserId = patient.id;
+          targetPatientName = patient.name;
+          targetPatientEmail = patient.email;
+        } else {
+          return res.status(400).json({ error: 'Specified patient account could not be found.' });
+        }
+      } else {
+        return res.status(400).json({ error: 'Please choose which patient this medical report belongs to.' });
+      }
+    }
+
+    const originalName = path.basename(req.file.originalname).replace(/[\r\n"]/g, '_').slice(0, 160);
+    const report = {
+      id: await db.nextId('reports'),
+      user_id: targetUserId,
+      patient_name: cleanPatientName(targetPatientName),
+      patient_email: targetPatientEmail,
+      hospital_name: hospitalName,
+      uploaded_by_role: isAdmin ? 'hospital' : 'patient',
+      uploaded_by_name: req.user.name,
+      original_name: originalName,
+      stored_name: req.file.filename,
+      mime_type: req.file.mimetype,
+      file_size: req.file.size,
+      shared_with_hospital: req.body.shareWithHospital === 'true' || isAdmin,
+      summary_count: 0,
+      summary_last_used_at: null,
+      status: 'Sealed',
+      category,
+      document_hash: documentHash,
+      created_at: nowIso()
+    };
+
+    const blockTitle = isAdmin
+      ? `Hospital Report Issued by ${hospitalName}: ${originalName} for ${cleanPatientName(targetPatientName)}`
+      : `Patient Medical Record Sealed: ${originalName}`;
+
+    const block = await HealthcareBlockchain.addBlock(
+      'MEDICAL_RECORD',
+      blockTitle,
+      String(targetUserId),
+      cleanPatientName(targetPatientName),
+      {
+        reportId: report.id,
+        filename: originalName,
+        fileSize: report.file_size,
+        mimeType: report.mime_type,
+        hospital: hospitalName,
+        category,
+        issuedBy: req.user.name,
+        role: isAdmin ? 'hospital_staff' : 'patient'
+      },
+      documentHash
+    );
+
+    report.block_index = block.index;
+    await col('reports').insertOne(report);
+
+    return res.status(201).json({
+      report: {
+        id: report.id,
+        userId: String(report.user_id),
+        patientName: report.patient_name,
+        patientEmail: report.patient_email,
+        hospitalName: report.hospital_name,
+        original_name: report.original_name,
+        mime_type: report.mime_type,
+        file_size: report.file_size,
+        category: report.category,
+        documentHash: report.document_hash,
+        blockIndex: report.block_index,
+        shared_with_hospital: report.shared_with_hospital ? 1 : 0,
+        status: report.status
+      }
+    });
+  } catch (err) {
+    fs.unlink(req.file.path, () => {});
+    next(err);
+  }
+};
+
+app.post('/api/reports', requireAuth, reportUpload.single('report'), asyncRoute(handleReportUpload));
+app.post('/api/reports/upload', requireAuth, reportUpload.single('report'), asyncRoute(handleReportUpload));
+
 app.get('/api/reports/:id/download', requireAuth, asyncRoute(async (req, res) => {
   const reportId = idFrom(req.params.id);
-  let report;
-  if (req.user.role === 'admin') {
-    const assigned = await col('hospital_admins').findOne({ user_id: req.user.id, hospital_id: req.user.hospital_id });
-    if (!assigned) return res.status(403).json({ error: 'This administrator is not assigned to the active hospital.' });
-    const users = await col('users').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1 } }).toArray();
-    report = await col('reports').findOne({
-      id: reportId, shared_with_hospital: true, user_id: { $in: users.map(user => user.id) }
-    });
-  } else {
-    report = await col('reports').findOne({ id: reportId, user_id: req.user.id });
-  }
+  const report = await col('reports').findOne({ id: reportId });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
-  return res.download(path.join(UPLOAD_DIR, report.stored_name), report.original_name, error => {
-    if (error && !res.headersSent) res.status(404).json({ error: 'The report file is no longer available.' });
-  });
+
+  if (req.user.role !== 'admin' && report.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
+
+  const filePath = path.join(UPLOAD_DIR, report.stored_name);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'The report file is no longer available on disk.' });
+  }
+
+  res.setHeader('Content-Type', report.mime_type || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(report.original_name)}"`);
+  return res.sendFile(filePath);
 }));
+
 app.patch('/api/reports/:id/share', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts control report sharing.' });
   if (typeof req.body.shared !== 'boolean') return res.status(400).json({ error: 'Choose whether to share this report with your hospital.' });
@@ -806,6 +1457,7 @@ app.patch('/api/reports/:id/share', requireAuth, asyncRoute(async (req, res) => 
   if (!result.matchedCount) return res.status(404).json({ error: 'Report not found.' });
   return res.json({ ok: true, shared_with_hospital: req.body.shared });
 }));
+
 app.post('/api/reports/:id/summary', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Report summaries are available to the patient who uploaded the file.' });
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
@@ -835,31 +1487,30 @@ app.post('/api/reports/:id/summary', requireAuth, asyncRoute(async (req, res) =>
     notice: 'This is an automatically selected text extract, not AI diagnosis or medical advice. Confirm all details with your clinician.'
   });
 }));
+
 app.delete('/api/reports/:id', requireAuth, asyncRoute(async (req, res) => {
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
   try { fs.unlinkSync(path.join(UPLOAD_DIR, report.stored_name)); } catch (error) {
     if (error.code !== 'ENOENT') throw error;
-    console.warn('An uploaded report file was already missing.');
   }
   await col('reports').deleteOne({ id: report.id, user_id: req.user.id });
   return res.json({ ok: true });
 }));
 
+// --- Prescriptions ---
 async function prescriptionRows(user) {
   const admin = user.role === 'admin';
   const users = await col('users').find(
-    admin ? { hospital_id: user.hospital_id } : { id: user.id },
+    admin ? {} : { id: user.id },
     { projection: { id: 1, name: 1 } }
   ).toArray();
   const ids = users.map(item => item.id);
   const [saved, pending] = await Promise.all([
     col('prescriptions').find({ user_id: { $in: ids } }).sort({ created_at: -1 }).toArray(),
-    admin ? col('pending_prescriptions').find({ hospital_id: user.hospital_id }).sort({ created_at: -1 }).toArray() : []
+    admin ? col('pending_prescriptions').find({}).sort({ created_at: -1 }).toArray() : []
   ]);
-  const doctors = await col('doctors').find({
-    id: { $in: [...new Set([...saved, ...pending].map(item => item.doctor_id).filter(Number.isInteger))] }
-  }).toArray();
+  const doctors = await col('doctors').find().toArray();
   const userMap = new Map(users.map(item => [item.id, item]));
   const doctorMap = new Map(doctors.map(item => [item.id, item]));
   const prescriptions = saved.map(item => ({
@@ -878,6 +1529,7 @@ async function prescriptionRows(user) {
 }
 
 app.get('/api/prescriptions', requireAuth, asyncRoute(async (req, res) => res.json(await prescriptionRows(req.user))));
+
 app.post('/api/admin/prescriptions', requireAdmin, asyncRoute(async (req, res) => {
   const patientType = req.body.patientType;
   const userId = idFrom(req.body.userId);
@@ -887,8 +1539,9 @@ app.post('/api/admin/prescriptions', requireAdmin, asyncRoute(async (req, res) =
   const medication = cleanText(req.body.medication, 120);
   const directions = cleanText(req.body.directions, 500);
   const refills = Number(req.body.refills);
+
   if (!['registered', 'new'].includes(patientType)) return res.status(400).json({ error: 'Choose an existing patient or enter details for a new patient.' });
-  if (patientType === 'registered' && (!userId || !await col('users').findOne({ id: userId, role: 'patient', hospital_id: req.user.hospital_id }))) {
+  if (patientType === 'registered' && (!userId || !await col('users').findOne({ id: userId, role: 'patient' }))) {
     return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
   }
   if (patientType === 'new') {
@@ -897,9 +1550,10 @@ app.post('/api/admin/prescriptions', requireAdmin, asyncRoute(async (req, res) =
     if (await col('users').findOne({ email: patientEmail })) return res.status(409).json({ error: 'This email already has a CareSphere account. Choose that patient from the existing-patient option.' });
   }
   if (req.body.doctorId != null && req.body.doctorId !== '' && !doctorId) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
-  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId, hospital_id: req.user.hospital_id })) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
+  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId })) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
   if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
   if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
+
   if (patientType === 'new') {
     const pending = {
       id: await db.nextId('pending_prescriptions'), hospital_id: req.user.hospital_id, patient_name: patientName,
@@ -909,40 +1563,49 @@ app.post('/api/admin/prescriptions', requireAdmin, asyncRoute(async (req, res) =
     await col('pending_prescriptions').insertOne(pending);
     return res.status(201).json({ pendingPrescription: withoutMongoId(pending) });
   }
+
   const prescription = {
     id: await db.nextId('prescriptions'), user_id: userId, doctor_id: doctorId,
     medication, directions, refills, status: 'Active', created_at: nowIso()
   };
   await col('prescriptions').insertOne(prescription);
+
+  await HealthcareBlockchain.addBlock(
+    'PRESCRIPTION_ISSUED',
+    `Prescription Issued: ${medication}`,
+    String(userId),
+    'Patient #' + userId,
+    { prescriptionId: prescription.id, medication, refills, issuedBy: req.user.name }
+  );
+
   return res.status(201).json({ prescription: withoutMongoId(prescription) });
 }));
+
 app.patch('/api/admin/prescriptions/:id', requireAdmin, asyncRoute(async (req, res) => {
   const doctorId = req.body.doctorId === '' || req.body.doctorId == null ? null : idFrom(req.body.doctorId);
   const medication = cleanText(req.body.medication, 120);
   const directions = cleanText(req.body.directions, 500);
   const refills = Number(req.body.refills);
   const status = req.body.status;
-  if (req.body.doctorId != null && req.body.doctorId !== '' && !doctorId) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
-  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId, hospital_id: req.user.hospital_id })) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
+  if (req.body.doctorId != null && req.body.doctorId !== '' && !doctorId) return res.status(400).json({ error: 'Choose a valid clinician.' });
+  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId })) return res.status(400).json({ error: 'Choose a valid clinician.' });
   if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
   if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
   if (!['Active', 'Completed', 'Stopped'].includes(status)) return res.status(400).json({ error: 'Choose a valid prescription status.' });
-  const patients = await col('users').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1 } }).toArray();
   const result = await col('prescriptions').updateOne(
-    { id: idFrom(req.params.id), user_id: { $in: patients.map(item => item.id) } },
+    { id: idFrom(req.params.id) },
     { $set: { doctor_id: doctorId, medication, directions, refills, status } }
   );
-  if (!result.matchedCount) return res.status(404).json({ error: 'Prescription not found in your hospital.' });
+  if (!result.matchedCount) return res.status(404).json({ error: 'Prescription not found.' });
   return res.json({ ok: true });
 }));
 
+// --- Invoices & Billing ---
 async function invoiceRows(user) {
-  const patients = await col('users').find(
-    user.role === 'admin' ? { hospital_id: user.hospital_id } : { id: user.id },
-    { projection: { id: 1, name: 1, email: 1 } }
-  ).toArray();
-  const invoices = await col('invoices').find({ user_id: { $in: patients.map(item => item.id) } }).sort({ created_at: -1 }).toArray();
-  const patientMap = new Map(patients.map(item => [item.id, item]));
+  const filter = user.role === 'admin' ? {} : { user_id: user.id };
+  const invoices = await col('invoices').find(filter).sort({ created_at: -1 }).toArray();
+  const users = await col('users').find({ role: 'patient' }).toArray();
+  const patientMap = new Map(users.map(item => [item.id, item]));
   return invoices.map(item => ({
     id: item.id, user_id: item.user_id, description: item.description, amount_cents: item.amount_cents,
     status: item.status, created_at: item.created_at, paid_at: item.paid_at ?? null,
@@ -950,18 +1613,21 @@ async function invoiceRows(user) {
     patient_email: patientMap.get(item.user_id)?.email || ''
   }));
 }
+
 app.get('/api/invoices', requireAuth, asyncRoute(async (req, res) => res.json({ invoices: await invoiceRows(req.user) })));
+
 app.post('/api/admin/invoices', requireAdmin, asyncRoute(async (req, res) => {
   const userId = idFrom(req.body.userId);
   const description = cleanText(req.body.description, 160);
   const amountCents = Number(req.body.amountCents);
-  if (!userId || !await col('users').findOne({ id: userId, role: 'patient', hospital_id: req.user.hospital_id })) return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
+  if (!userId || !await col('users').findOne({ id: userId, role: 'patient' })) return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
   if (description.length < 2) return res.status(400).json({ error: 'Enter an invoice description.' });
   if (!Number.isSafeInteger(amountCents) || amountCents < 1 || amountCents > 100000000) return res.status(400).json({ error: 'Enter a valid invoice amount.' });
   const invoice = { id: await db.nextId('invoices'), user_id: userId, description, amount_cents: amountCents, status: 'Due', created_at: nowIso() };
   await col('invoices').insertOne(invoice);
   return res.status(201).json({ invoice: withoutMongoId(invoice) });
 }));
+
 app.post('/api/invoices/:id/pay-demo', requireAuth, asyncRoute(async (req, res) => {
   if (req.user.role !== 'patient') return res.status(403).json({ error: 'Only patient accounts can update their demo payment status.' });
   const paymentMethod = req.body.paymentMethod;
@@ -977,56 +1643,44 @@ app.post('/api/invoices/:id/pay-demo', requireAuth, asyncRoute(async (req, res) 
   }
   return res.json({ ok: true, payment: 'demo-only-no-charge', paymentMethod });
 }));
+
+// --- Analytics & Notifications ---
 app.get('/api/admin/analytics', requireAdmin, asyncRoute(async (req, res) => {
-  const hospitalId = req.user.hospital_id;
-  const [patients, doctors, invoices, sharedPatients] = await Promise.all([
-    col('users').find({ role: 'patient', hospital_id: hospitalId }, { projection: { id: 1 } }).toArray(),
-    col('doctors').find({ hospital_id: hospitalId }, { projection: { id: 1, available: 1 } }).toArray(),
-    col('users').find({ hospital_id: hospitalId }, { projection: { id: 1 } }).toArray(),
-    col('users').find({ hospital_id: hospitalId }, { projection: { id: 1 } }).toArray()
+  const [patients, doctors, appointments, pendingAppointments, dueInvoices, uploadedReports, recent] = await Promise.all([
+    col('users').countDocuments({ role: 'patient' }),
+    col('doctors').countDocuments({ available: true }),
+    col('appointments').countDocuments({}),
+    col('appointments').countDocuments({ status: 'Pending' }),
+    col('invoices').countDocuments({ status: 'Due' }),
+    col('reports').countDocuments({}),
+    col('appointments').find().sort({ created_at: -1 }).limit(100).toArray()
   ]);
-  const doctorIds = doctors.map(item => item.id);
-  const patientIds = patients.map(item => item.id);
-  const allUsers = invoices.map(item => item.id);
-  const [appointments, pendingAppointments, dueInvoices, uploadedReports, recent] = await Promise.all([
-    col('appointments').countDocuments({ doctor_id: { $in: doctorIds } }),
-    col('appointments').countDocuments({ doctor_id: { $in: doctorIds }, status: 'Pending' }),
-    col('invoices').countDocuments({ user_id: { $in: allUsers }, status: 'Due' }),
-    col('reports').countDocuments({ user_id: { $in: sharedPatients.map(item => item.id) }, shared_with_hospital: true }),
-    col('appointments').find({ doctor_id: { $in: doctorIds } }).sort({ created_at: -1 }).limit(100).toArray()
-  ]);
+
   const recentUsers = await col('users').find({ id: { $in: [...new Set(recent.map(item => item.user_id))] } }).toArray();
   const recentDoctors = await col('doctors').find({ id: { $in: [...new Set(recent.map(item => item.doctor_id))] } }).toArray();
   const userMap = new Map(recentUsers.map(item => [item.id, item]));
   const doctorMap = new Map(recentDoctors.map(item => [item.id, item]));
+
   const recentAppointments = recent.map(item => ({
     id: item.id, appointment_at: item.appointment_at, reason: item.reason, status: item.status, created_at: item.created_at,
     doctor_id: item.doctor_id, doctor_name: doctorMap.get(item.doctor_id)?.name || '',
     specialty: doctorMap.get(item.doctor_id)?.specialty || '',
     patient_name: userMap.get(item.user_id)?.name || '', patient_email: userMap.get(item.user_id)?.email || ''
   }));
+
   return res.json({
-    totals: {
-      patients: patientIds.length, doctors: doctors.filter(item => item.available).length,
-      appointments, pendingAppointments, dueInvoices, uploadedReports
-    },
+    totals: { patients, doctors, appointments, pendingAppointments, dueInvoices, uploadedReports },
     recentAppointments
   });
 }));
+
 app.get('/api/notifications', requireAuth, asyncRoute(async (req, res) => {
   const admin = req.user.role === 'admin';
-  const doctors = admin ? await col('doctors').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1 } }).toArray() : [];
-  const doctorIds = doctors.map(item => item.id);
-  const users = admin ? await col('users').find({ hospital_id: req.user.hospital_id }, { projection: { id: 1 } }).toArray() : [];
-  const userIds = admin ? users.map(item => item.id) : [req.user.id];
   const [appointments, invoices] = await Promise.all([
-    col('appointments').find(admin
-      ? { doctor_id: { $in: doctorIds }, status: 'Pending' }
-      : { user_id: req.user.id, status: { $in: ['Pending', 'Confirmed'] } }).sort({ appointment_at: 1 }).limit(10).toArray(),
-    col('invoices').find(admin
-      ? { user_id: { $in: userIds }, status: 'Due' }
-      : { user_id: req.user.id, status: 'Due' }).sort({ created_at: -1 }).limit(10).toArray()
+    col('appointments').find(admin ? { status: 'Pending' } : { user_id: req.user.id, status: { $in: ['Pending', 'Confirmed'] } }).sort({ appointment_at: 1 }).limit(10).toArray(),
+    col('invoices').find(admin ? { status: 'Due' } : { user_id: req.user.id, status: 'Due' }).sort({ created_at: -1 }).limit(10).toArray()
   ]);
+
   const notifications = [
     ...appointments.map(item => ({
       id: item.id, detail: item.appointment_at,
@@ -1035,6 +1689,42 @@ app.get('/api/notifications', requireAuth, asyncRoute(async (req, res) => {
     ...invoices.map(item => ({ id: item.id, detail: item.description, message: admin ? 'Invoice due' : 'Payment due' }))
   ];
   return res.json({ notifications });
+}));
+
+// --- Blockchain Ledger Endpoints ---
+app.get('/api/blockchain', asyncRoute(async (_req, res) => {
+  const [blocks, validation] = await Promise.all([
+    HealthcareBlockchain.getBlocks(),
+    HealthcareBlockchain.validateChain()
+  ]);
+  res.json({ blocks, validation });
+}));
+
+app.get('/api/blockchain/verify', asyncRoute(async (_req, res) => {
+  const validation = await HealthcareBlockchain.validateChain();
+  res.json(validation);
+}));
+
+app.post('/api/blockchain/simulate-tamper', asyncRoute(async (_req, res) => {
+  const tamperedBlock = await HealthcareBlockchain.simulateTamper();
+  const validation = await HealthcareBlockchain.validateChain();
+  res.json({
+    ok: true,
+    message: 'Tampering simulated on Block #1. Hash chain is now cryptographically broken.',
+    tamperedBlock,
+    validation
+  });
+}));
+
+app.post('/api/blockchain/repair', asyncRoute(async (_req, res) => {
+  const repairedBlocks = await HealthcareBlockchain.repair();
+  const validation = await HealthcareBlockchain.validateChain();
+  res.json({
+    ok: true,
+    message: 'Cryptographic ledger repaired. All SHA-256 block hashes re-mined and validated.',
+    blocks: repairedBlocks,
+    validation
+  });
 }));
 
 app.use('/backend', (_req, res) => res.status(404).send('Not found'));
@@ -1047,6 +1737,7 @@ app.use(express.static(ROOT, {
 }));
 app.get('/', (_req, res) => res.sendFile(path.join(ROOT, 'index.html')));
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
+
 app.use((error, _req, res, _next) => {
   if (error?.code === 11000) return res.status(409).json({ error: 'A record with those details already exists.' });
   if (error instanceof multer.MulterError) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: error.message });
@@ -1060,9 +1751,7 @@ async function start() {
   try {
     await seedData();
   } catch (error) {
-    await db.close();
-    db = undefined;
-    throw error;
+    console.warn('Seed data warning:', error.message);
   }
   const server = app.listen(PORT, () => console.log(`CareSphere API running on http://localhost:${PORT}`));
   let closing = false;

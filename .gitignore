@@ -21,4 +21,11 @@ backend/data/uploads/
 *.backup
 
 # Logs
-*.loggit restore --staged backend/server.js.backup
+*.log
+
+# IDE & OS files
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

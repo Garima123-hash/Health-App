@@ -3,24 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CareSphere | Hospital Management</title>
+<title>CareSphere | Healthcare Platform & Cryptographic Vault</title>
 <link rel="stylesheet" href="css/styles.css" />
-
 </head>
 <body>
 <div id="landing" class="landing">
   <header class="topbar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
-    <nav class="toplinks"><a href="#features">Platform</a><a href="#features">Features</a><a href="#about">About</a><button class="btn btn-primary" onclick="openAuth('user')">Sign in <span>↗</span></button></nav>
+    <nav class="toplinks"><a href="#features">Platform</a><a href="#blockchain-preview">Blockchain Vault</a><a href="#about">About</a><button class="btn btn-primary" onclick="openAuth('user')">Sign in <span>↗</span></button></nav>
     <button class="btn btn-primary" onclick="openAuth('user')">Get started ↗</button>
   </header>
   <main class="hero">
     <section>
-      <div class="eyebrow"><span class="pulse"></span> SMARTER CARE. HEALTHIER TOMORROWS.</div>
+      <div class="eyebrow"><span class="pulse"></span> TAMPER-EVIDENT HEALTHCARE LEDGER</div>
       <h1>Healthcare that puts <span>people first.</span></h1>
-      <p class="hero-copy">A connected hospital experience for patients, clinicians, and administrators. Manage appointments, understand your health journey, and bring essential care services into one simple place.</p>
+      <p class="hero-copy">A connected hospital experience for patients, clinicians, and administrators. Manage appointments, verify medical records via our SHA-256 blockchain audit trail, and bring essential care services into one simple place.</p>
       <div class="hero-actions"><button class="btn btn-primary" onclick="openAuth('user')">Explore patient portal <span>→</span></button><button class="btn btn-outline" onclick="openAuth('admin')">Administrator access ↗</button></div>
-      <div class="trust-row"><div class="trust-item"><span class="check">✓</span> Patient-first design</div><div class="trust-item"><span class="check">✓</span> Clear health information</div><div class="trust-item"><span class="check">✓</span> One connected portal</div></div>
+      <div class="trust-row"><div class="trust-item"><span class="check">✓</span> Patient-first design</div><div class="trust-item"><span class="check">✓</span> Cryptographic hash chain</div><div class="trust-item"><span class="check">✓</span> One connected portal</div></div>
     </section>
     <section class="visual" aria-label="Healthcare illustration">
       <div class="visual-bg"></div>
@@ -40,16 +39,16 @@
         <rect x="347" y="250" width="74" height="90" rx="13" fill="#fff" stroke="#d4eadd" stroke-width="2"/><circle cx="384" cy="275" r="13" fill="#e4f5eb"/><path d="M384 267v16M376 275h16" stroke="#13866b" stroke-width="3" stroke-linecap="round"/><rect x="362" y="298" width="44" height="6" rx="3" fill="#dcece3"/><rect x="362" y="310" width="33" height="6" rx="3" fill="#dcece3"/><rect x="362" y="322" width="39" height="6" rx="3" fill="#b8e0c9"/>
         <circle cx="120" cy="153" r="8" fill="#a7d9be"/><circle cx="393" cy="188" r="10" fill="#a7d9be"/><path d="M108 190h20M118 180v20" stroke="#16876b" stroke-width="3" stroke-linecap="round"/>
       </svg>
-      <div class="float-card two"><div style="display:flex;align-items:center;gap:10px"><div style="width:35px;height:35px;border-radius:11px;background:#e5f6ed;display:grid;place-items:center;color:#13866b;font-size:19px">✓</div><div><div class="float-title">CARE, SIMPLIFIED</div><div style="font-weight:800;font-size:13px;margin-top:4px">Your health, in one place</div></div></div></div>
+      <div class="float-card two"><div style="display:flex;align-items:center;gap:10px"><div style="width:35px;height:35px;border-radius:11px;background:#e5f6ed;display:grid;place-items:center;color:#13866b;font-size:19px">⛓</div><div><div class="float-title">IMMUTABLE LEDGER</div><div style="font-weight:800;font-size:13px;margin-top:4px">SHA-256 Tamper Proof</div></div></div></div>
     </section>
   </main>
-  <section class="features" id="features"><div class="section-inner" style="text-align:center"><div class="section-kicker">ONE PLATFORM, BETTER CARE</div><h2 class="section-heading">Everything you need, thoughtfully connected.</h2><p class="section-sub">Designed to make hospital journeys clearer for patients and daily operations easier for care teams.</p><div class="feature-grid">
+  <section class="features" id="features"><div class="section-inner" style="text-align:center"><div class="section-kicker">ONE PLATFORM, PROVEN INTEGRITY</div><h2 class="section-heading">Everything you need, thoughtfully secured.</h2><p class="section-sub">Designed to make hospital journeys clearer for patients and daily operations easier for care teams.</p><div class="feature-grid">
     <article class="feature"><div class="feature-icon">♡</div><h3>Patient-first experience</h3><p>Book appointments, view prescriptions, track upcoming visits, and keep key health details together.</p></article>
+    <article class="feature"><div class="feature-icon">⛓</div><h3>Blockchain data integrity</h3><p>Medical records and consultations are cryptographically hashed and linked in an immutable SHA-256 block chain.</p></article>
     <article class="feature"><div class="feature-icon">✚</div><h3>Hospital operations</h3><p>Give administrators a clear overview of appointments, patients, staff, and operational activity.</p></article>
-    <article class="feature"><div class="feature-icon">⌁</div><h3>Clear, connected insights</h3><p>Present useful summaries and status indicators in an accessible, responsive dashboard.</p></article>
   </div></div></section>
-  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:760px;margin:auto;text-align:left"><strong>Prototype note:</strong> CareSphere is a local prototype. Accounts, hospital workspaces, appointments, doctor listings, patient-owned report uploads, prescription and invoice records, and dashboard summaries use the MongoDB-backed API. Optional Women’s Health logging and its local source-retrieval guide are not AI, cannot diagnose PCOS/PCOD or interpret medical history, and do not provide treatment advice. The report overview only extracts selectable PDF text locally; it cannot read scans or images. Password reset, real payment processing, and medical integrations are not provided. Do not use real patient information or rely on this app for medical decisions.</div></div></section>
-  <footer class="footer">© 2026 CareSphere Health Platform · Designed for a more connected care experience</footer>
+  <section class="features" id="about" style="padding-top:0"><div class="section-inner" style="text-align:center"><div class="notice" style="max-width:820px;margin:auto;text-align:left"><strong>CareSphere Platform & Blockchain Vault:</strong> Powered by Express, MongoDB, and an in-engine cryptographic SHA-256 Blockchain ledger. Patient appointments, cross-hospital medical records, Women’s Health check-ins, and digital prescriptions are committed to the chain with immutable block signatures, guaranteeing data tamper-evidence for hackathon presentation and clinical auditing.</div></div></section>
+  <footer class="footer">© 2026 CareSphere Health Platform · Cryptographic Medical Vault & Connected Care</footer>
 </div>
 
 <div id="authOverlay" class="auth-overlay hidden" onclick="if(event.target===this)closeAuth()">
@@ -59,13 +58,23 @@
     <h2 class="auth-heading">Welcome back</h2><p class="auth-sub">Sign in to continue to your personalised healthcare workspace.</p>
     <div class="role-switch"><button id="roleUser" class="role-btn active" onclick="setRole('user')">♙ Patient / User</button><button id="roleAdmin" class="role-btn" onclick="setRole('admin')">▦ Administrator</button></div>
     <form id="loginForm" onsubmit="login(event)">
+      <div class="field" id="loginHospitalField" style="display:none">
+        <label for="loginHospital" style="display:flex;align-items:center;justify-content:space-between">
+          <span id="loginHospitalLabel">Administered Hospital Facility Name</span>
+          <span id="loginHospitalBadge" style="font-weight:700;color:var(--green);font-size:10.5px">🏥 Syncs to .env</span>
+        </label>
+        <input id="loginHospital" name="hospitalName" type="text" minlength="2" maxlength="100" placeholder="e.g. CareSphere Central Hospital" autocomplete="organization" value="CareSphere Central Hospital">
+        <small id="loginHospitalNote" style="font-size:10.5px;color:var(--muted);display:block;margin-top:4px">
+          Enter your hospital facility name. Signing in updates your facility and writes ADMIN_HOSPITAL to .env.
+        </small>
+      </div>
       <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required autocomplete="username"></div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" placeholder="Enter your password" required autocomplete="current-password"></div>
       <div class="form-row"><span>Secure session</span><button class="link-btn" type="button" disabled title="Password reset is not connected">Password reset unavailable</button></div>
       <button class="btn btn-primary full" type="submit">Sign in securely →</button>
       <div id="loginError" class="error"></div>
     </form>
-    <div class="demo-note" id="authModeNote"><span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Use a test account while developing. Your password is stored as a hash on the server.</small></div>
+    <div class="demo-note" id="authModeNote"><span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small></div>
   </div>
 </div>
 
@@ -75,7 +84,13 @@
     <h2 id="bookingTitle">Book an appointment</h2>
     <p class="booking-subtitle">Choose a doctor and a future date and time for your visit.</p>
     <form id="bookingForm" onsubmit="submitAppointment(event)">
-      <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required></select></div>
+      <div class="field">
+        <label for="bookingHospital">Select Hospital</label>
+        <select id="bookingHospital" name="hospital" onchange="onBookingHospitalChange(this.value)" required>
+          <option value="">Choose a hospital</option>
+        </select>
+      </div>
+      <div class="field"><label for="bookingDoctor">Doctor</label><select id="bookingDoctor" name="doctorId" required><option value="">First choose a hospital above</option></select></div>
       <div class="field"><label for="bookingDate">Date and time</label><input id="bookingDate" name="appointmentAt" type="datetime-local" required></div>
       <div class="field"><label for="bookingReason">Reason for visit</label><select id="bookingReason" name="reason" onchange="toggleOtherReason(this.value)" required><option>General consultation</option><option>Follow-up visit</option><option>New or worsening symptoms</option><option>Prescription review</option><option>Test results discussion</option><option>Preventive check-up</option><option value="Other">Other / not listed</option></select></div>
       <div id="bookingReasonDetailsField" class="field hidden"><label for="bookingReasonDetails">Brief reason</label><input id="bookingReasonDetails" type="text" maxlength="110" placeholder="Briefly describe your reason"></div>
@@ -85,21 +100,226 @@
   </section>
 </div>
 
+<div id="statusModalOverlay" class="booking-overlay hidden" onclick="if(event.target===this)closeStatusModal()" aria-hidden="true">
+  <section class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="statusModalTitle" style="max-width:440px">
+    <button class="close" type="button" onclick="closeStatusModal()" aria-label="Close">✕</button>
+    <h2 id="statusModalTitle">Update Appointment Status</h2>
+    <p class="booking-subtitle">Change patient consultation status. Updates are cryptographically sealed to the blockchain ledger.</p>
+    <form id="statusModalForm" onsubmit="submitStatusModal(event)">
+      <input type="hidden" id="statusModalApptId">
+      <div class="field">
+        <label>Patient Name</label>
+        <input id="statusModalPatient" type="text" readonly style="background:#f4f9f6;font-weight:600">
+      </div>
+      <div class="field">
+        <label>Doctor Consulted</label>
+        <input id="statusModalDoctor" type="text" readonly style="background:#f4f9f6;font-weight:600">
+      </div>
+      <div class="field">
+        <label>Appointment Schedule</label>
+        <input id="statusModalDate" type="text" readonly style="background:#f4f9f6">
+      </div>
+      <div class="field">
+        <label for="statusModalSelect">Select Status</label>
+        <select id="statusModalSelect" required style="padding:10px 14px;font-size:13px;font-weight:600;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+          <option value="Pending">⏳ Pending</option>
+          <option value="Confirmed">✅ Confirmed</option>
+          <option value="Completed">🏆 Completed</option>
+          <option value="Cancelled">❌ Cancelled</option>
+        </select>
+      </div>
+      <div class="booking-actions" style="margin-top:20px">
+        <button class="btn btn-outline" type="button" onclick="closeStatusModal()">Cancel</button>
+        <button id="statusModalSubmit" class="btn btn-primary" type="submit">Update Status ⛓️</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<div id="addDoctorModalOverlay" class="booking-overlay hidden" onclick="if(event.target===this)closeAddDoctorModal()" aria-hidden="true">
+  <section class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="addDoctorModalTitle" style="max-width:480px">
+    <button class="close" type="button" onclick="closeAddDoctorModal()" aria-label="Close">✕</button>
+    <h2 id="addDoctorModalTitle">Add Doctor to Hospital</h2>
+    <p class="booking-subtitle">Onboard a medical specialist to your hospital facility. Doctor records are cryptographically sealed to MongoDB and the Blockchain ledger.</p>
+    <form id="addDoctorForm" onsubmit="submitAddDoctor(event)">
+      <div class="field">
+        <label for="addDoctorName">Doctor Full Name</label>
+        <input id="addDoctorName" name="name" type="text" minlength="2" maxlength="80" placeholder="e.g. Dr. Rajesh Khanna" required>
+      </div>
+      <div class="field">
+        <label for="addDoctorSpecialty">Department / Specialty</label>
+        <select id="addDoctorSpecialty" name="specialty" required style="padding:10px 14px;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+          <option value="">Select a specialty</option>
+          <option value="Cardiology">Cardiology</option>
+          <option value="General Medicine">General Medicine</option>
+          <option value="Dermatology">Dermatology</option>
+          <option value="Orthopaedics">Orthopaedics</option>
+          <option value="Paediatrics">Paediatrics</option>
+          <option value="Neurology">Neurology</option>
+          <option value="Oncology">Oncology</option>
+          <option value="Radiology">Radiology</option>
+          <option value="Gynaecology">Gynaecology</option>
+          <option value="Ophthalmology">Ophthalmology</option>
+          <option value="ENT">ENT</option>
+          <option value="Psychiatry">Psychiatry</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="addDoctorExperience">Experience</label>
+        <input id="addDoctorExperience" name="experience" type="text" maxlength="60" placeholder="e.g. 10 years experience" value="10 years experience">
+      </div>
+      <div class="field">
+        <label for="addDoctorHospital">Hospital Facility</label>
+        <input id="addDoctorHospital" name="hospitalName" type="text" readonly style="background:#f4f9f6;font-weight:600" title="Associated with your hospital administration account">
+      </div>
+      <div class="field">
+        <label for="addDoctorSymbol">Doctor Avatar / Icon</label>
+        <select id="addDoctorSymbol" name="symbol" style="padding:10px 14px;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+          <option value="👨‍⚕️">👨‍⚕️ Male Clinician</option>
+          <option value="👩‍⚕️">👩‍⚕️ Female Clinician</option>
+          <option value="🩺">🩺 Stethoscope / Specialist</option>
+        </select>
+      </div>
+      <div id="addDoctorError" class="error" role="alert"></div>
+      <div class="booking-actions" style="margin-top:20px">
+        <button class="btn btn-outline" type="button" onclick="closeAddDoctorModal()">Cancel</button>
+        <button id="addDoctorSubmit" class="btn btn-primary" type="submit">Save Doctor to Hospital ➕</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<!-- Patient Clinical Records & Cross-Hospital History Modal -->
+<div id="patientRecordsModalOverlay" class="booking-overlay hidden" onclick="if(event.target===this)closePatientRecordsModal()" aria-hidden="true">
+  <section class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="patientRecordsTitle" style="max-width:680px">
+    <button class="close" type="button" onclick="closePatientRecordsModal()" aria-label="Close">✕</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <div class="patient-avatar" style="width:38px;height:38px;font-size:15px;background:#e5f5ed;color:var(--green)">📋</div>
+      <div>
+        <h2 id="patientRecordsTitle" style="margin:0;font-size:19px">Patient Clinical Records & History</h2>
+        <p id="patientRecordsSubtitle" class="booking-subtitle" style="margin:2px 0 0;font-size:12px">Cross-hospital health dossier & blockchain-verified lab documents.</p>
+      </div>
+    </div>
+
+    <!-- Latest Report Spotlight Banner -->
+    <div id="patientRecordsLatestCard" style="margin:16px 0 18px"></div>
+
+    <!-- All Historical Reports List -->
+    <div style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <strong style="font-size:13px;color:var(--ink)">Historical Records & Diagnostics</strong>
+        <span id="patientRecordsCountBadge" class="status active" style="font-size:10px">0 Records</span>
+      </div>
+      <div id="patientRecordsList" style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:12px;background:#fff;padding:8px"></div>
+    </div>
+
+    <!-- Hospital Staff Upload New Report for this Patient -->
+    <div id="patientRecordsUploadBox" style="background:#f4f9f6;border:1px dashed #bfe2d1;border-radius:14px;padding:16px;margin-top:10px">
+      <strong style="font-size:12px;display:block;margin-bottom:8px;color:#225241">➕ Issue / Upload Clinical Report for this Patient</strong>
+      <form id="patientRecordsUploadForm" onsubmit="submitPatientModalReport(event)">
+        <input type="hidden" id="modalTargetPatientId">
+        <input type="hidden" id="modalTargetPatientEmail">
+        <input type="hidden" id="modalTargetAppointmentId">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Report Category</label>
+            <select id="modalReportCategory" required style="padding:8px 12px;border:1px solid var(--line);border-radius:9px;width:100%;background:#fff;font-size:12px">
+              <option value="Diagnostic Lab Report">🧪 Diagnostic Lab Report</option>
+              <option value="Consultation Notes">🩺 Consultation Notes</option>
+              <option value="Prescription">💊 Prescription</option>
+              <option value="Discharge Summary">📋 Discharge Summary</option>
+              <option value="Imaging / Radiology">🩻 Imaging / Radiology</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px">Select File (PDF, JPG, PNG)</label>
+            <input type="file" id="modalReportFile" accept=".pdf,.png,.jpg,.jpeg" required style="padding:6px;border:1px solid var(--line);border-radius:9px;width:100%;background:#fff;font-size:11px">
+          </div>
+        </div>
+        <div id="modalReportUploadError" class="error" style="margin-bottom:8px"></div>
+        <div style="display:flex;justify-content:flex-end">
+          <button id="modalReportUploadSubmit" class="btn btn-primary btn-sm" type="submit">Seal on Blockchain ⛓️</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+
+<!-- Admin Standalone Upload Report Modal -->
+<div id="adminUploadReportModalOverlay" class="booking-overlay hidden" onclick="if(event.target===this)closeAdminUploadReportModal()" aria-hidden="true">
+  <section class="booking-modal" role="dialog" aria-modal="true" aria-labelledby="adminUploadReportTitle" style="max-width:500px">
+    <button class="close" type="button" onclick="closeAdminUploadReportModal()" aria-label="Close">✕</button>
+    <h2 id="adminUploadReportTitle">Issue Clinical Report to Patient</h2>
+    <p class="booking-subtitle">Upload and cryptographically fingerprint medical records to MongoDB and the Blockchain ledger.</p>
+    <form id="adminUploadReportForm" onsubmit="submitAdminStandaloneReport(event)">
+      <div class="field">
+        <label for="adminReportPatientSelect">Select Patient</label>
+        <select id="adminReportPatientSelect" required style="padding:10px 14px;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+          <option value="">Choose a registered patient</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="adminReportCategory">Report Category</label>
+        <select id="adminReportCategory" required style="padding:10px 14px;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+          <option value="Diagnostic Lab Report">🧪 Diagnostic Lab Report</option>
+          <option value="Consultation Notes">🩺 Consultation Notes</option>
+          <option value="Prescription">💊 Prescription</option>
+          <option value="Discharge Summary">📋 Discharge Summary</option>
+          <option value="Imaging / Radiology">🩻 Imaging / Radiology</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="adminReportHospital">Issuing Hospital Facility</label>
+        <input id="adminReportHospital" type="text" readonly style="background:#f4f9f6;font-weight:600">
+      </div>
+      <div class="field">
+        <label for="adminReportFileInput">Medical Report Document (PDF, JPG, PNG)</label>
+        <input type="file" id="adminReportFileInput" accept=".pdf,.png,.jpg,.jpeg" required style="padding:10px 14px;border:1px solid var(--line);border-radius:11px;width:100%;background:#fff">
+      </div>
+      <div id="adminReportUploadError" class="error"></div>
+      <div class="booking-actions" style="margin-top:20px">
+        <button class="btn btn-outline" type="button" onclick="closeAdminUploadReportModal()">Cancel</button>
+        <button id="adminReportUploadSubmit" class="btn btn-primary" type="submit">Seal Document on Blockchain ⛓️</button>
+      </div>
+    </form>
+  </section>
+</div>
+
 <div id="app" class="app hidden">
   <aside id="sidebar" class="sidebar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
     <div class="nav-label">Workspace</div><nav id="navItems"></nav>
-    <div class="sidebar-bottom"><div class="help-card"><strong>Need a hand?</strong><p>Ask your project administrator for help with this local prototype.</p></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
+    <div class="sidebar-bottom"><div class="help-card"><strong>Blockchain Vault</strong><p>SHA-256 Ledger protects patient health records from tampering.</p><button class="btn btn-light btn-sm" type="button" onclick="go('blockchain')">Inspect Ledger ⛓</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
   </aside>
   <main class="app-main">
-    <header class="app-top"><div style="display:flex;align-items:center;gap:13px"><button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button><div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div></div><div class="top-right"><button class="icon-btn" type="button" onclick="showNotifications()" aria-label="Show appointment and billing updates" title="Appointment and billing updates">♧<span class="notification-dot"></span></button><div class="profile"><div class="avatar" id="avatarInitials">VS</div><div><div class="profile-name" id="profileName">Patient</div><div class="profile-role" id="profileRole">Patient account</div></div></div></div></header>
+    <header class="app-top">
+      <div style="display:flex;align-items:center;gap:13px">
+        <button class="icon-btn mobile-menu" onclick="toggleSidebar()">☰</button>
+        <div class="breadcrumb">CareSphere / <strong id="topPage">Overview</strong></div>
+      </div>
+      <div class="top-right">
+        <button class="icon-btn" type="button" onclick="showNotifications()" aria-label="Show appointment and billing updates" title="Appointment and billing updates">♧<span class="notification-dot"></span></button>
+        <button class="icon-btn" type="button" onclick="go('blockchain')" aria-label="Blockchain Ledger" title="Inspect Blockchain Ledger">⛓</button>
+        <div class="profile" onclick="go('settings')" style="cursor:pointer" title="Manage account profile">
+          <div class="avatar" id="avatarInitials">VS</div>
+          <div>
+            <div class="profile-name" id="profileName">Patient</div>
+            <div class="profile-role" id="profileRole">Patient account</div>
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm logout-top-btn" type="button" onclick="logout()" title="Sign out of account" aria-label="Sign out">
+          <span>↪</span><span class="logout-text">Sign out</span>
+        </button>
+      </div>
+    </header>
     <div class="content">
       <section id="page-dashboard" class="page-section active"></section>
       <section id="page-appointments" class="page-section"></section>
       <section id="page-doctors" class="page-section"></section>
       <section id="page-records" class="page-section"></section>
-      <section id="page-ai" class="page-section"></section>
+      <section id="page-blockchain" class="page-section"></section>
       <section id="page-womens-health" class="page-section"></section>
+      <section id="page-ai" class="page-section"></section>
       <section id="page-prescriptions" class="page-section"></section>
       <section id="page-billing" class="page-section"></section>
       <section id="page-patients" class="page-section"></section>
