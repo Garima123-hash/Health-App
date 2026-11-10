@@ -132,9 +132,14 @@ function toLocalDateTimeValue(date) {
 
 // --- API Client ---
 async function apiRequest(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const token = localStorage.getItem('caresphere_token');
+  if (token && !headers.Authorization && !headers.authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
   const response = await fetch(url, {
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers,
     ...options
   });
   let data = {};
@@ -399,6 +404,13 @@ async function login(e) {
       throw new Error('Authentication failed. No user record returned.');
     }
 
+    if (result.token || result.accessToken) {
+      localStorage.setItem('caresphere_token', result.token || result.accessToken);
+    }
+    if (result.user) {
+      localStorage.setItem('caresphere_user', JSON.stringify(result.user));
+    }
+
     state.email = result.user.email;
     state.name = result.user.name;
     state.role = result.user.role === 'admin' ? 'admin' : 'user';
@@ -443,6 +455,8 @@ async function logout() {
   } catch (err) {
     console.warn('Sign-out request failed:', err.message);
   }
+  localStorage.removeItem('caresphere_token');
+  localStorage.removeItem('caresphere_user');
   state.appointments = [];
   state.email = '';
   state.name = 'Patient';
@@ -469,13 +483,23 @@ async function logout() {
 
 async function restoreSession() {
   try {
-    const result = await apiRequest('/api/auth/me');
-    if (result.user) {
+    let result = await apiRequest('/api/auth/me').catch(() => null);
+    if (!result || !result.user) {
+      result = await apiRequest('/api/auth/refresh', { method: 'POST', body: '{}' }).catch(() => null);
+      if (result && (result.token || result.accessToken)) {
+        localStorage.setItem('caresphere_token', result.token || result.accessToken);
+      }
+    }
+    if (result && result.user) {
       state.email = result.user.email;
       state.name = result.user.name;
       state.role = result.user.role === 'admin' ? 'admin' : 'user';
       state.hospitalName = result.user.hospital_name || 'CareSphere Central Hospital';
+      localStorage.setItem('caresphere_user', JSON.stringify(result.user));
       await enterDashboard();
+    } else {
+      localStorage.removeItem('caresphere_token');
+      localStorage.removeItem('caresphere_user');
     }
   } catch (err) {
     console.warn('Session restore unavailable:', err.message);

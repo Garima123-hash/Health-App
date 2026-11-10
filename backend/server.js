@@ -16,6 +16,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const session = require('express-session');
+const { MongoStore } = require('connect-mongo');
 const multer = require('multer');
 const pdfjs = import('pdfjs-dist/legacy/build/pdf.mjs');
 const { funFacts, retrieveKnowledge } = require('./womens-health-knowledge');
@@ -50,6 +51,7 @@ function cleanPatientName(name) {
 
 function updateEnvFile(key, value) {
   try {
+    if (process.env[key] === value) return;
     const envPath = path.join(ROOT, '.env');
     let content = '';
     if (fs.existsSync(envPath)) {
@@ -138,6 +140,9 @@ async function issueAuthTokens(user, res, req = null) {
   }
   if (req && req.session) {
     req.session.user = user;
+    await new Promise((resolve) => {
+      req.session.save(() => resolve());
+    });
   }
   const accessToken = createAccessToken(user, familyId);
   return { user, accessToken, token: accessToken, expiresIn: 900 };
@@ -163,10 +168,7 @@ async function authenticate(req, res, next) {
           return next();
         }
       } catch (error) {
-        if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.TokenExpiredError) {
-          return res.status(401).json({ error: 'Your access token is invalid or expired. Please sign in again.' });
-        }
-        return next(error);
+        // Fall through to session / refresh token check
       }
     }
   }
@@ -175,6 +177,30 @@ async function authenticate(req, res, next) {
   if (req.session && req.session.user) {
     req.user = req.session.user;
     return next();
+  }
+
+  // 3. Try Persistent Refresh Cookie Fallback
+  const refreshToken = readCookie(req, REFRESH_COOKIE);
+  if (refreshToken) {
+    try {
+      const tokenHash = hashRefreshToken(refreshToken);
+      const tokenDoc = await col('auth_refresh_tokens').findOne({
+        token_hash: tokenHash,
+        revoked_at: { $exists: false },
+        expires_at: { $gt: Date.now() }
+      });
+      if (tokenDoc) {
+        const user = await userWithHospital(tokenDoc.user_id);
+        if (user) {
+          req.user = user;
+          if (req.session) {
+            req.session.user = user;
+            req.session.save(() => {});
+          }
+          return next();
+        }
+      }
+    } catch (_) {}
   }
 
   req.user = null;
@@ -394,17 +420,27 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 
-// Session middleware
+// Session middleware with persistent MongoDB store
+const sessionStore = process.env.MONGODB_URI
+  ? MongoStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      collectionName: 'sessions',
+      ttl: 14 * 24 * 60 * 60,
+      autoRemove: 'native'
+    })
+  : undefined;
+
 app.use(session({
   name: 'caresphere.sid',
   secret: process.env.SESSION_SECRET || JWT_SECRET,
   resave: false,
   saveUninitialized: false,
+  store: sessionStore,
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 8
+    maxAge: 1000 * 60 * 60 * 24 * 14
   }
 }));
 
