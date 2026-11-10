@@ -154,3 +154,4 @@ router.delete('/data', requirePatient, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
+

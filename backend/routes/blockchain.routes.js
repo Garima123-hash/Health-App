@@ -42,3 +42,4 @@ router.post('/repair', asyncRoute(async (_req, res) => {
 }));
 
 module.exports = router;
+

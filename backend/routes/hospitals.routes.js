@@ -21,3 +21,4 @@ router.get('/me', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
+

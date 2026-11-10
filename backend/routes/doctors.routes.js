@@ -42,3 +42,4 @@ router.get('/:id', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
+

@@ -26,3 +26,4 @@ async function extractReportSentences(storedName, maxPages = 20) {
 module.exports = {
   extractReportSentences
 };
+

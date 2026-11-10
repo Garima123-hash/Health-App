@@ -85,3 +85,4 @@ router.use('/prescriptions', prescriptionsRoutes);
 router.use('/invoices', invoicesRoutes);
 
 module.exports = router;
+

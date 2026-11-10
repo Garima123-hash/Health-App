@@ -131,3 +131,4 @@ class HealthcareBlockchain {
 }
 
 module.exports = { HealthcareBlockchain };
+

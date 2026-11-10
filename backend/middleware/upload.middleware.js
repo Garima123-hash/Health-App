@@ -37,3 +37,4 @@ module.exports = {
   allowedReportTypes,
   reportUpload
 };
+

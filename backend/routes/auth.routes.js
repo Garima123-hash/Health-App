@@ -222,3 +222,4 @@ router.post('/logout', asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
+
