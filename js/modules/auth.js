@@ -46,8 +46,12 @@ export function setRole(role) {
 
   const note = document.getElementById('authModeNote');
   const loginGenderField = document.getElementById('loginGenderField');
+  const loginHospitalField = document.getElementById('loginHospitalField');
+  const loginHospitalInput = document.getElementById('loginHospital');
 
   if (role === 'admin') {
+    if (loginHospitalField) loginHospitalField.style.display = 'block';
+    if (loginHospitalInput) loginHospitalInput.required = true;
     if (runtime.authMode === 'register') {
       toggleAuthMode();
     }
@@ -60,6 +64,8 @@ export function setRole(role) {
     }
     if (loginGenderField) loginGenderField.style.display = 'none';
   } else {
+    if (loginHospitalField) loginHospitalField.style.display = 'none';
+    if (loginHospitalInput) { loginHospitalInput.required = false; loginHospitalInput.value = ''; }
     if (loginGenderField) loginGenderField.style.display = runtime.authMode === 'login' ? 'block' : 'none';
     if (note && runtime.authMode === 'login') {
       note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
@@ -180,9 +186,15 @@ export async function submitAuth(event) {
         body: JSON.stringify({ name, email, password, gender, hospitalName: state.hospitalName })
       });
     } else {
+      const hospitalName = state.role === 'admin' ? (document.getElementById('loginHospital')?.value || '').trim() : '';
+      if (state.role === 'admin' && !hospitalName) {
+        showAuthError('Please enter your assigned hospital name.');
+        if (submit) submit.disabled = false;
+        return;
+      }
       result = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, hospitalName })
       });
     }
 
