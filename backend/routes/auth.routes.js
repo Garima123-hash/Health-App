@@ -135,6 +135,7 @@ router.post('/register', asyncRoute(async (req, res) => {
 router.post('/login', asyncRoute(async (req, res) => {
   const email = cleanText(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const hospitalName = cleanText(req.body.hospitalName, 120);
 
   if (!validEmail(email) || !password) return res.status(400).json({ error: 'Enter your email address and password.' });
   const user = await col('users').findOne({ email });
@@ -142,11 +143,18 @@ router.post('/login', asyncRoute(async (req, res) => {
     return res.status(401).json({ error: 'Email or password is incorrect.' });
   }
   if (user.role === 'admin') {
+    if (!hospitalName) return res.status(400).json({ error: 'Enter your assigned hospital name.' });
+    const hospital = await col('hospitals').findOne({ name_key: hospitalName.toLocaleLowerCase('en') });
+    if (!hospital) return res.status(404).json({ error: 'Hospital not found. Check the hospital name and try again.' });
     const assignment = await col('hospital_admins').findOne({
       user_id: user.id,
-      hospital_id: user.hospital_id
+      hospital_id: hospital.id
     }, { projection: { _id: 1 } });
-    if (!assignment) return res.status(403).json({ error: 'This administrator account is not assigned to a hospital.' });
+    if (!assignment) return res.status(403).json({ error: 'This administrator account is not assigned to the selected hospital.' });
+    if (user.hospital_id !== hospital.id) {
+      await col('users').updateOne({ id: user.id }, { $set: { hospital_id: hospital.id } });
+      user.hospital_id = hospital.id;
+    }
   }
 
   const userData = await userWithHospital(user.id);
