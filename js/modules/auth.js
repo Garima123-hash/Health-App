@@ -37,6 +37,37 @@ export function closeAuth() {
   showAuthError('');
 }
 
+export async function loadAdminHospitals() {
+  const hospitalSelect = document.getElementById('loginHospital');
+  if (!hospitalSelect) return;
+
+  hospitalSelect.innerHTML = '<option value="">Loading hospitals...</option>';
+  hospitalSelect.disabled = true;
+
+  try {
+    const result = await apiRequest('/api/hospitals');
+    const hospitals = Array.isArray(result.hospitals) ? result.hospitals : [];
+    hospitalSelect.innerHTML = '<option value="">Choose your hospital</option>';
+
+    hospitals.forEach(hospital => {
+      if (!hospital || !hospital.name) return;
+      const option = document.createElement('option');
+      option.value = hospital.name;
+      option.textContent = hospital.city ? `${hospital.name} — ${hospital.city}` : hospital.name;
+      hospitalSelect.appendChild(option);
+    });
+
+    if (hospitals.length === 0) {
+      hospitalSelect.innerHTML = '<option value="">No hospitals available</option>';
+    }
+  } catch (error) {
+    console.error('Could not load hospitals:', error.message);
+    hospitalSelect.innerHTML = '<option value="">Unable to load hospitals. Try again.</option>';
+  } finally {
+    hospitalSelect.disabled = false;
+  }
+}
+
 export function setRole(role) {
   state.role = role;
   const userBtn = document.getElementById('roleUser');
@@ -52,6 +83,7 @@ export function setRole(role) {
   if (role === 'admin') {
     if (loginHospitalField) loginHospitalField.style.display = 'block';
     if (loginHospitalInput) loginHospitalInput.required = true;
+    loadAdminHospitals();
     if (runtime.authMode === 'register') {
       toggleAuthMode();
     }
