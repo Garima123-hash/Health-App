@@ -15,7 +15,7 @@ export async function explainReportInSimpleLanguage(reportId) {
     .find(item => item.dataset.reportExplainId === String(report.id));
   if (!panel || !row) return;
 
-  if (!window.confirm('CareSphere will send the readable text in this PDF to Google Gemini for a plain-language explanation. Personal identifiers are removed first. Continue?')) return;
+  if (!window.confirm('CareSphere will send the readable text in this PDF to Groq for a plain-language explanation. Personal identifiers are removed first. Continue?')) return;
 
   row.style.display = 'table-row';
   if (button) {
