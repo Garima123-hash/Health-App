@@ -448,11 +448,7 @@ export function renderRecords() {
       `}
     </div>
   </div>
-  <div class="notice">
-    <strong>Record protection:</strong> Your report stays private in document storage. The ledger keeps a digital fingerprint, not the report itself. Choose “Check record” to see whether the saved file still matches.
-  </div>
-  ${!isAdmin ? `<div class="notice"><strong>AI report explanation:</strong> For PDFs with selectable text, CareSphere sends redacted report text to OpenAI to create a plain-language explanation after you agree. Configure <code>OPENAI_API_KEY</code> on the server to enable analysis. Scanned PDFs are not supported yet; explanations can be incomplete and are not medical advice.</div>
-  <div id="reportExplanationPanel" class="record-summary" aria-live="polite"></div>` : ''}
+  ${!isAdmin ? `` : ''}
   <div class="panel">
     ${panelHead('Cryptographically Sealed Records', 'Visit summaries, laboratory files & diagnostic documents')}
     <div class="table-wrap">
