@@ -2,9 +2,19 @@
 
 const bcrypt = require('bcryptjs');
 const { col, getDb } = require('../database/connection');
-const { starterDoctors } = require('../config');
+const { starterDoctorRosters } = require('../config');
 const { cleanEnv, cleanText, nowIso } = require('../utils/helpers');
 const { HealthcareBlockchain } = require('./blockchain.service');
+const { seedReportKnowledge } = require('./report-knowledge.service');
+
+const legacyStarterDoctors = [
+  ['Dr. Ananya Mehta', 'Cardiology', '12 years experience'],
+  ['Dr. Rahul Kapoor', 'General Medicine', '9 years experience'],
+  ['Dr. Priya Nair', 'Dermatology', '8 years experience'],
+  ['Dr. Vikram Rao', 'Orthopaedics', '15 years experience'],
+  ['Dr. Sana Khan', 'Paediatrics', '10 years experience'],
+  ['Dr. Arjun Das', 'Neurology', '11 years experience']
+];
 
 async function ensureHospital(name, city = '') {
   const db = getDb();
@@ -48,11 +58,33 @@ async function seedData() {
 
   const hospitals = [];
   for (const location of locations) hospitals.push(await ensureHospital(location.name, location.city));
+  await seedReportKnowledge();
   await col('users').updateMany({ hospital_id: { $exists: false } }, { $set: { hospital_id: hospitals[0].id } });
   await col('doctors').updateMany({ hospital_id: { $exists: false } }, { $set: { hospital_id: hospitals[0].id } });
 
-  for (const hospital of hospitals) {
-    for (const [name, specialty, experience] of starterDoctors) {
+  for (const [hospitalIndex, hospital] of hospitals.entries()) {
+    const roster = starterDoctorRosters[hospitalIndex] || starterDoctorRosters[0];
+    const rosterNames = new Set(roster.map(([name]) => name.toLocaleLowerCase('en')));
+    const legacyDocs = await col('doctors').find({
+      hospital_id: hospital.id,
+      name_key: { $in: legacyStarterDoctors.map(([name]) => name.toLocaleLowerCase('en')) },
+      experience: { $in: legacyStarterDoctors.map(([, , experience]) => experience) }
+    }).toArray();
+    for (const doctor of legacyDocs) {
+      const isLegacySeedDoctor = legacyStarterDoctors.some(([name, specialty, experience]) =>
+        doctor.name_key === name.toLocaleLowerCase('en')
+        && doctor.specialty === specialty
+        && doctor.experience === experience
+      );
+      if (isLegacySeedDoctor && !rosterNames.has(doctor.name_key)) {
+        await col('doctors').updateOne(
+          { _id: doctor._id },
+          { $set: { available: false, seeded_retired: true } }
+        );
+      }
+    }
+
+    for (const [name, specialty, experience] of roster) {
       const nameKey = name.toLocaleLowerCase('en');
       if (!await col('doctors').findOne({ hospital_id: hospital.id, name_key: nameKey }, { projection: { _id: 1 } })) {
         try {
@@ -76,11 +108,13 @@ async function seedData() {
     const passwordHash = await bcrypt.hash(password, 12);
     let user = await col('users').findOne({ email });
     if (user) {
-      await col('users').updateOne({ id: user.id }, { $set: { role: 'admin', password_hash: passwordHash, hospital_id: hospital.id } });
+      await col('users').updateOne({ id: user.id }, {
+        $set: { role: 'admin', password_hash: passwordHash, hospital_id: hospital.id, is_super_admin: true }
+      });
     } else {
       user = {
         id: await db.nextId('users'), name: 'CareSphere Administrator', email,
-        password_hash: passwordHash, role: 'admin', hospital_id: hospital.id,
+        password_hash: passwordHash, role: 'admin', hospital_id: hospital.id, is_super_admin: true,
         womens_health_enabled: false, created_at: nowIso()
       };
       await col('users').insertOne(user);
@@ -110,8 +144,9 @@ async function seedData() {
       password_hash: await bcrypt.hash('Password@123', 12),
       role: 'patient',
       age: 28,
+      gender: 'male',
       hospital_id: hospitals[0].id,
-      womens_health_enabled: true,
+      womens_health_enabled: false,
       created_at: nowIso()
     };
     await col('users').insertOne(demoUser);
@@ -126,4 +161,3 @@ module.exports = {
   ensureHospital,
   seedData
 };
-

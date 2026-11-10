@@ -2,7 +2,13 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { registerPatient, request, startTestApp, textPdf } = require('../helpers.cjs');
 
-test('local report overviews extract text and record usage only for the owner', async context => {
+test('report explanations require AI configuration and remain private to the owner', async context => {
+  const originalApiKey = process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  context.after(() => {
+    if (originalApiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalApiKey;
+  });
   const { baseUrl } = await startTestApp(context);
   const hospitals = await request(baseUrl, '/api/hospitals');
   const owner = await registerPatient(baseUrl, hospitals.body.hospitals[0].id, 'Report Owner');
@@ -26,20 +32,9 @@ test('local report overviews extract text and record usage only for the owner', 
     method: 'POST',
     body: JSON.stringify({})
   });
-  assert.equal(firstOverview.response.status, 200, JSON.stringify(firstOverview.body));
-  assert.equal(firstOverview.body.method, 'local-extractive');
-  assert.match(firstOverview.body.summary.join(' '), /readable test information/);
-  assert.equal(firstOverview.body.usageCount, 1);
-  assert.match(firstOverview.body.notice, /not AI/);
-
-  const secondOverview = await request(baseUrl, `/api/reports/${reportId}/summary`, {
-    token: owner.token,
-    method: 'POST',
-    body: JSON.stringify({})
-  });
-  assert.equal(secondOverview.body.usageCount, 2);
+  assert.equal(firstOverview.response.status, 503, JSON.stringify(firstOverview.body));
+  assert.match(firstOverview.body.error, /Set OPENAI_API_KEY in \.env/);
   const reportList = await request(baseUrl, '/api/reports', { token: owner.token });
-  assert.equal(reportList.body.reports[0].summary_count, 2);
   assert.equal(reportList.body.reports[0].shared_with_hospital, 0);
 
   const otherPatientView = await request(baseUrl, `/api/reports/${reportId}/summary`, {

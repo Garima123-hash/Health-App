@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { startTestApp } = require('../helpers.cjs');
+const { registerPatient, request, startTestApp } = require('../helpers.cjs');
 
 function refreshCookie(response) {
   const setCookie = response.headers.getSetCookie?.().find(value => value.startsWith('caresphere.refresh='));
@@ -32,6 +32,7 @@ test('JWT bearer access and rotating HttpOnly refresh tokens authenticate and re
   const doctors = await fetch(`${baseUrl}/api/doctors`, {
     headers: { Authorization: `Bearer ${session.body.accessToken}` }
   });
+
   assert.equal(doctors.status, 200);
 
   const refreshedResponse = await fetch(`${baseUrl}/api/auth/refresh`, {
@@ -74,4 +75,58 @@ test('JWT bearer access and rotating HttpOnly refresh tokens authenticate and re
     headers: { Authorization: `Bearer ${logoutSession.body.accessToken}` }
   });
   assert.equal(afterLogoutAccess.status, 401);
+});
+
+test('central administrators create hospital-specific administrator accounts', async context => {
+  const { baseUrl, adminEmail, adminPassword } = await startTestApp(context);
+  const central = await login(baseUrl, adminEmail, adminPassword);
+  assert.equal(central.body.user.is_super_admin, true);
+
+  const hospitalList = await request(baseUrl, '/api/admin/hospitals', { token: central.body.accessToken });
+  assert.equal(hospitalList.response.status, 200);
+  const hospital = hospitalList.body.hospitals[0];
+  assert.ok(hospital);
+
+  const email = `hospital-admin-${process.pid}-${Date.now()}@example.invalid`;
+  const createResult = await request(baseUrl, '/api/admin/hospital-admins', {
+    token: central.body.accessToken,
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Hospital Administrator',
+      email,
+      password: 'Hospital-Admin-Password-2026!',
+      hospitalId: hospital.id
+    })
+  });
+  assert.equal(createResult.response.status, 201, JSON.stringify(createResult.body));
+  assert.equal(createResult.body.admin.hospital_id, hospital.id);
+  assert.equal(createResult.body.admin.email, email);
+
+  const hospitalAdmin = await login(baseUrl, email, 'Hospital-Admin-Password-2026!');
+  assert.equal(hospitalAdmin.body.user.is_super_admin, false);
+  assert.equal(hospitalAdmin.body.user.hospital_id, hospital.id);
+
+  const otherHospital = hospitalList.body.hospitals.find(item => item.id !== hospital.id);
+  assert.ok(otherHospital);
+  const patientAtHospital = await registerPatient(baseUrl, hospital.id, 'Local Hospital Patient');
+  await registerPatient(baseUrl, otherHospital.id, 'Other Hospital Patient');
+
+  const assignedHospitals = await request(baseUrl, '/api/admin/hospitals', {
+    token: hospitalAdmin.body.accessToken
+  });
+  assert.deepEqual(assignedHospitals.body.hospitals.map(item => item.id), [hospital.id]);
+
+  const localPatients = await request(baseUrl, '/api/admin/patients', {
+    token: hospitalAdmin.body.accessToken
+  });
+  assert.deepEqual(localPatients.body.patients.map(item => item.id), [patientAtHospital.user.id]);
+  const localDoctors = await request(baseUrl, '/api/doctors?hospital=all', {
+    token: hospitalAdmin.body.accessToken
+  });
+  assert.ok(localDoctors.body.doctors.every(item => item.hospital_id === hospital.id));
+
+  const adminDirectory = await request(baseUrl, '/api/admin/hospital-admins', {
+    token: hospitalAdmin.body.accessToken
+  });
+  assert.equal(adminDirectory.response.status, 403);
 });

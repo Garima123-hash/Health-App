@@ -10,25 +10,96 @@ const {
   validEmail,
   idFrom,
   nowIso,
-  withoutMongoId,
-  updateEnvFile
+  withoutMongoId
 } = require('../utils/helpers');
-const { requireAdmin } = require('../middleware/auth.middleware');
+const { requireAdmin, requireSuperAdmin } = require('../middleware/auth.middleware');
 const { HealthcareBlockchain } = require('../services/blockchain.service');
 
 const router = express.Router();
 
 // Hospitals administration
 router.get('/hospitals', requireAdmin, asyncRoute(async (req, res) => {
-  const assignments = await col('hospital_admins').find({ user_id: req.user.id }).toArray();
-  const ids = assignments.map(item => item.hospital_id);
-  const hospitals = await col('hospitals').find(ids.length ? { id: { $in: ids } } : {}, {
+  const filter = req.user.is_super_admin ? {} : { id: req.user.hospital_id };
+  const hospitals = await col('hospitals').find(filter, {
     projection: { _id: 0, id: 1, name: 1, city: 1, phone: 1 }
   }).sort({ name: 1 }).toArray();
   return res.json({ hospitals });
 }));
 
-router.post('/hospitals', requireAdmin, asyncRoute(async (req, res) => {
+router.get('/hospital-admins', requireSuperAdmin, asyncRoute(async (_req, res) => {
+  const admins = await col('users').find(
+    { role: 'admin', is_super_admin: { $ne: true } },
+    { projection: { _id: 0, id: 1, name: 1, email: 1, hospital_id: 1 } }
+  ).sort({ name: 1 }).toArray();
+  const hospitals = await col('hospitals').find(
+    { id: { $in: admins.map(admin => admin.hospital_id) } },
+    { projection: { _id: 0, id: 1, name: 1 } }
+  ).toArray();
+  const hospitalNames = new Map(hospitals.map(hospital => [hospital.id, hospital.name]));
+  return res.json({
+    admins: admins.map(admin => ({
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      hospital_id: admin.hospital_id,
+      hospital_name: hospitalNames.get(admin.hospital_id) || 'Unknown hospital'
+    }))
+  });
+}));
+
+router.post('/hospital-admins', requireSuperAdmin, asyncRoute(async (req, res) => {
+  const db = getDb();
+  const name = cleanText(req.body.name, 80);
+  const email = cleanText(req.body.email, 254).toLowerCase();
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const hospitalId = idFrom(req.body.hospitalId);
+  if (name.length < 2) return res.status(400).json({ error: 'Enter the administrator’s full name.' });
+  if (!validEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must contain 8–128 characters.' });
+  if (!hospitalId) return res.status(400).json({ error: 'Choose a hospital for this administrator.' });
+  const hospital = await col('hospitals').findOne({ id: hospitalId });
+  if (!hospital) return res.status(404).json({ error: 'Hospital not found.' });
+  if (await col('users').findOne({ email }, { projection: { _id: 1 } })) {
+    return res.status(409).json({ error: 'An account with this email already exists.' });
+  }
+
+  const admin = {
+    id: await db.nextId('users'),
+    name,
+    email,
+    password_hash: await bcrypt.hash(password, 12),
+    role: 'admin',
+    is_super_admin: false,
+    hospital_id: hospital.id,
+    created_at: nowIso()
+  };
+  let insertedUser = false;
+  try {
+    await col('users').insertOne(admin);
+    insertedUser = true;
+    await col('hospital_admins').insertOne({
+      id: await db.nextId('hospital_admins'),
+      user_id: admin.id,
+      hospital_id: hospital.id
+    });
+  } catch (error) {
+    if (insertedUser) await col('users').deleteOne({ id: admin.id });
+    if (error.code === 11000) return res.status(409).json({ error: 'An account with this email already exists.' });
+    throw error;
+  }
+
+  return res.status(201).json({
+    admin: {
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      hospital_id: hospital.id,
+      hospital_name: hospital.name
+    }
+  });
+}));
+
+router.post('/hospitals', requireSuperAdmin, asyncRoute(async (req, res) => {
   const db = getDb();
   const name = cleanText(req.body.name, 120);
   const city = cleanText(req.body.city, 100);
@@ -47,7 +118,7 @@ router.post('/hospitals', requireAdmin, asyncRoute(async (req, res) => {
   return res.status(201).json({ hospital: withoutMongoId(hospital) });
 }));
 
-router.post('/hospitals/select', requireAdmin, asyncRoute(async (req, res) => {
+router.post('/hospitals/select', requireSuperAdmin, asyncRoute(async (req, res) => {
   const hospitalId = idFrom(req.body.hospitalId);
   if (!hospitalId) return res.status(403).json({ error: 'You are not assigned to that hospital.' });
   const [hospital, assignment] = await Promise.all([
@@ -62,7 +133,6 @@ router.post('/hospitals/select', requireAdmin, asyncRoute(async (req, res) => {
     req.session.user.hospital_id = hospital.id;
     req.session.user.hospital_name = hospital.name;
   }
-  updateEnvFile('ADMIN_HOSPITAL', hospital.name);
   return res.json({ hospital });
 }));
 
@@ -81,8 +151,6 @@ router.patch('/hospital', requireAdmin, asyncRoute(async (req, res) => {
   await col('hospitals').updateOne({ id: req.user.hospital_id }, { $set: { name, name_key: nameKey, city, phone } });
   req.user.hospital_name = name;
   if (req.session?.user) req.session.user.hospital_name = name;
-  updateEnvFile('ADMIN_HOSPITAL', name);
-
   await HealthcareBlockchain.addBlock(
     'HOSPITAL_PROFILE_UPDATED',
     `Hospital Facility Configured: ${name}`,
@@ -145,8 +213,10 @@ router.patch('/doctors/:id', requireAdmin, asyncRoute(async (req, res) => {
 }));
 
 // Patients administration
-router.get('/patients', requireAdmin, asyncRoute(async (_req, res) => {
-  const patients = await col('users').find({ role: 'patient' }, {
+router.get('/patients', requireAdmin, asyncRoute(async (req, res) => {
+  const patientFilter = { role: 'patient' };
+  if (!req.user.is_super_admin) patientFilter.hospital_id = req.user.hospital_id;
+  const patients = await col('users').find(patientFilter, {
     projection: { _id: 0, id: 1, name: 1, email: 1, age: 1, created_at: 1 }
   }).sort({ created_at: -1 }).toArray();
   return res.json({
@@ -192,15 +262,23 @@ router.post('/patients', requireAdmin, asyncRoute(async (req, res) => {
 }));
 
 // Analytics dashboard
-router.get('/analytics', requireAdmin, asyncRoute(async (_req, res) => {
+router.get('/analytics', requireAdmin, asyncRoute(async (req, res) => {
+  const hospitalFilter = req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id };
+  const patientsInScope = await col('users').find(
+    { role: 'patient', ...hospitalFilter },
+    { projection: { id: 1 } }
+  ).toArray();
+  const patientIds = patientsInScope.map(patient => patient.id);
+  const patientFilter = req.user.is_super_admin ? { role: 'patient' } : { role: 'patient', hospital_id: req.user.hospital_id };
+  const reportFilter = req.user.is_super_admin ? {} : { user_id: { $in: patientIds } };
   const [patients, doctors, appointments, pendingAppointments, dueInvoices, uploadedReports, recent] = await Promise.all([
-    col('users').countDocuments({ role: 'patient' }),
-    col('doctors').countDocuments({ available: true }),
-    col('appointments').countDocuments({}),
-    col('appointments').countDocuments({ status: 'Pending' }),
-    col('invoices').countDocuments({ status: 'Due' }),
-    col('reports').countDocuments({}),
-    col('appointments').find().sort({ created_at: -1 }).limit(100).toArray()
+    col('users').countDocuments(patientFilter),
+    col('doctors').countDocuments({ ...hospitalFilter, available: true }),
+    col('appointments').countDocuments(hospitalFilter),
+    col('appointments').countDocuments({ ...hospitalFilter, status: 'Pending' }),
+    col('invoices').countDocuments(req.user.is_super_admin ? { status: 'Due' } : { user_id: { $in: patientIds }, status: 'Due' }),
+    col('reports').countDocuments(reportFilter),
+    col('appointments').find(hospitalFilter).sort({ created_at: -1 }).limit(100).toArray()
   ]);
 
   const recentUsers = await col('users').find({ id: { $in: [...new Set(recent.map(item => item.user_id))] } }).toArray();
@@ -222,4 +300,3 @@ router.get('/analytics', requireAdmin, asyncRoute(async (_req, res) => {
 }));
 
 module.exports = router;
-

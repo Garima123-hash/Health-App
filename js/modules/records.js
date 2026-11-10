@@ -3,6 +3,55 @@ import { state, runtime } from '../state.js';
 import { apiRequest, refreshBackendData, cleanPatientName, formatAppointmentDate } from '../api.js';
 import { escapeHtml, toast, panelHead } from '../components/ui.js';
 
+export async function explainReportInSimpleLanguage(reportId) {
+  if (state.role !== 'patient') return;
+  const report = runtime.apiReports.find(item => String(item.id) === String(reportId));
+  if (!report || report.mime_type !== 'application/pdf') return;
+  if (!window.confirm('CareSphere will send the readable text in this report to OpenAI to prepare an AI-generated plain-language explanation. Personal identifiers are removed first. Continue?')) return;
+
+  const panel = document.getElementById('reportExplanationPanel');
+  if (!panel) return;
+  panel.innerHTML = '<div class="notice" role="status">Reading the PDF and preparing a plain-language explanation…</div>';
+
+  try {
+    const result = await apiRequest(`/api/reports/${encodeURIComponent(report.id)}/summary`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    panel.innerHTML = `<section class="record-summary-card" aria-live="polite">
+      <h3>In simple words</h3>
+      <p class="record-summary-method">AI analysis + report-matched references · ${result.sources.length} source${result.sources.length === 1 ? '' : 's'}</p>
+      <p>${escapeHtml(result.overview)}</p>
+      ${result.keyPoints.length ? `<h4>What the report says</h4><ul>${result.keyPoints.map(point => `<li>${escapeHtml(point)}</li>`).join('')}</ul>` : ''}
+      ${result.terms.length ? `<h4>Medical terms explained</h4><dl>${result.terms.map(item => `<dt>${escapeHtml(item.term)}</dt><dd>${escapeHtml(item.explanation)}</dd>`).join('')}</dl>` : ''}
+      ${result.questions.length ? `<h4>Questions you may ask your clinician</h4><ul>${result.questions.map(question => `<li>${escapeHtml(question)}</li>`).join('')}</ul>` : ''}
+      ${result.precautions.length ? `<h4>Keep in mind</h4><ul>${result.precautions.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
+      ${result.sources.length ? `<details class="record-summary-sources"><summary>References used</summary><ul>${result.sources.map(source => `<li><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title)}</a></li>`).join('')}</ul></details>` : '<p class="record-summary-notice">No matching reference was found; this is based on readable report text only.</p>'}
+      <p class="record-summary-notice">${escapeHtml(result.notice)} Report pages read: ${result.pagesRead} of ${result.totalPages}.</p>
+    </section>`;
+  } catch (error) {
+    panel.innerHTML = `<div class="notice" role="alert">${escapeHtml(error.message || 'Could not explain this report.')}</div>`;
+  }
+}
+
+export async function verifyMedicalRecord(reportId) {
+  const report = runtime.apiReports.find(item => String(item.id) === String(reportId));
+  if (!report) return;
+  try {
+    const result = await apiRequest(`/api/reports/${encodeURIComponent(report.id)}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    runtime.recordVerifications[report.id] = result;
+    if (typeof window.renderAll === 'function') window.renderAll();
+    toast(result.verified
+      ? 'Medical record integrity verified: file fingerprint and blockchain anchor match.'
+      : `Medical record verification failed: ${result.status.replace(/-/g, ' ')}.`);
+  } catch (error) {
+    toast(error.message || 'Could not verify this medical record.');
+  }
+}
+
 export function openPatientRecordsModal(patientId, patientName, appointmentId = '', patientEmail = '') {
   const overlay = document.getElementById('patientRecordsModalOverlay');
   if (!overlay) return;
@@ -308,6 +357,23 @@ export function renderRecords() {
   const reportsList = runtime.apiReports;
 
   const uploadedRows = reportsList.map(r => {
+    const verification = runtime.recordVerifications[r.id];
+    const integrityStatus = verification?.status || r.integrityStatus || 'sealed';
+    const auditHistory = verification?.auditHistory || r.auditHistory || [];
+    const integrityLabel = integrityStatus === 'verified'
+      ? 'Looks good'
+      : integrityStatus === 'sealed'
+        ? 'Not checked yet'
+        : integrityStatus === 'file-modified'
+          ? 'File has changed'
+          : integrityStatus === 'file-missing'
+            ? 'File unavailable'
+            : 'Needs review';
+    const integrityClass = integrityStatus === 'verified'
+      ? 'active'
+      : integrityStatus === 'sealed'
+        ? 'pending'
+        : 'critical';
     const isHosp = r.uploadedByRole === 'admin' || r.uploadedByRole === 'hospital';
     const sourceHtml = isHosp
       ? `<span style="font-weight:700;color:#184a38;font-size:11px">🏥 Issued by ${escapeHtml(r.hospitalName || 'CareSphere Hospital')}</span>`
@@ -336,15 +402,26 @@ export function renderRecords() {
       <td><span style="font-weight:600;font-size:11px">${escapeHtml(r.category || 'Diagnostic Report')}</span></td>
       <td>${escapeHtml(formatAppointmentDate(r.created_at))}</td>
       <td>
-        <span class="status completed" style="font-size:9.5px;cursor:pointer" onclick="go('blockchain')" title="SHA-256 fingerprint verified">
-          ⛓️ Block #${r.blockIndex}
-        </span>
+        <div class="record-integrity">
+          <span class="status ${integrityClass}">${integrityStatus === 'verified' ? '✓ ' : ''}${escapeHtml(integrityLabel)}</span>
+          <small>Checks the saved file against its protected fingerprint</small>
+          ${verification?.verifiedAt || r.integrityCheckedAt ? `<small>Checked ${escapeHtml(formatAppointmentDate(verification?.verifiedAt || r.integrityCheckedAt))}</small>` : ''}
+          <button type="button" class="link-btn" onclick="verifyMedicalRecord('${escapeHtml(r.id)}')">Check record</button>
+          <details class="record-audit-history">
+            <summary>Audit history (${auditHistory.length})</summary>
+            ${auditHistory.length ? `<ol>${auditHistory.map(event => `<li>
+              <span class="status ${event.status === 'verified' ? 'active' : (event.status === 'sealed' ? 'pending' : 'critical')}">${escapeHtml(event.status.replace(/-/g, ' '))}</span>
+              <small>${event.event_type === 'sealed' ? 'Record sealed' : 'Integrity check'} by ${event.actor_role === 'admin' ? 'hospital staff' : 'patient'} · ${escapeHtml(formatAppointmentDate(event.created_at))}${event.block_index != null ? ` · Block #${escapeHtml(String(event.block_index))}` : ' · Audit-only (ledger unavailable)'}</small>
+            </li>`).join('')}</ol>` : '<p>No audit events available.</p>'}
+          </details>
+        </div>
       </td>
       <td>
         <div style="display:flex;gap:6px;align-items:center">
           <a href="/api/reports/${encodeURIComponent(r.id)}/download" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;font-size:11px;padding:4px 9px">
             ⬇ View
           </a>
+          ${!isAdmin && r.mime_type === 'application/pdf' ? `<button class="btn btn-primary btn-sm" type="button" onclick="explainReportInSimpleLanguage('${escapeHtml(r.id)}')">Explain simply</button>` : ''}
           ${isAdmin ? `<button class="link-btn" onclick="openPatientRecordsModal('${escapeHtml(r.userId)}', '${escapeHtml(cleanPatientName(r.patientName))}')">History</button>` : ''}
         </div>
       </td>
@@ -372,8 +449,10 @@ export function renderRecords() {
     </div>
   </div>
   <div class="notice">
-    <strong>Blockchain Security Assurance:</strong> All medical documents are fingerprinted with SHA-256 cryptographic signatures and sealed into the CareSphere block chain. Reports issued by any hospital are visible to both patient and authorized clinical staff across hospitals.
+    <strong>Record protection:</strong> Your report stays private in document storage. The ledger keeps a digital fingerprint, not the report itself. Choose “Check record” to see whether the saved file still matches.
   </div>
+  ${!isAdmin ? `<div class="notice"><strong>AI report explanation:</strong> For PDFs with selectable text, CareSphere sends redacted report text to OpenAI to create a plain-language explanation after you agree. Configure <code>OPENAI_API_KEY</code> on the server to enable analysis. Scanned PDFs are not supported yet; explanations can be incomplete and are not medical advice.</div>
+  <div id="reportExplanationPanel" class="record-summary" aria-live="polite"></div>` : ''}
   <div class="panel">
     ${panelHead('Cryptographically Sealed Records', 'Visit summaries, laboratory files & diagnostic documents')}
     <div class="table-wrap">
@@ -385,7 +464,7 @@ export function renderRecords() {
             <th>Issuing Source</th>
             <th>Category</th>
             <th>Sealed Date</th>
-            <th>Blockchain Status</th>
+            <th>Record integrity & audit</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -396,4 +475,3 @@ export function renderRecords() {
     </div>
   </div>`;
 }
-

@@ -9,12 +9,17 @@ const router = express.Router();
 
 router.get('/', requireAuth, asyncRoute(async (req, res) => {
   const filter = {};
-  if (req.query.hospital && req.query.hospital !== 'all') {
-    const hosp = await col('hospitals').findOne({ name: req.query.hospital });
-    if (hosp) filter.hospital_id = hosp.id;
-  } else if (req.user?.hospital_id) {
+  const requestedHospital = typeof req.query.hospital === 'string' ? req.query.hospital.trim() : '';
+  if (req.user?.role === 'admin' && !req.user.is_super_admin) {
+    filter.hospital_id = req.user.hospital_id;
+  } else if (requestedHospital && requestedHospital !== 'all') {
+    const hosp = await col('hospitals').findOne({ name_key: requestedHospital.toLocaleLowerCase('en') });
+    if (!hosp) return res.status(404).json({ error: 'Hospital not found.' });
+    filter.hospital_id = hosp.id;
+  } else if (req.user?.hospital_id && (req.user.role === 'admin' || requestedHospital !== 'all')) {
     filter.hospital_id = req.user.hospital_id;
   }
+  filter.seeded_retired = { $ne: true };
   if (req.user?.role !== 'admin') filter.available = true;
 
   const doctors = await col('doctors').find(filter, {
@@ -36,10 +41,11 @@ router.get('/:id', requireAuth, asyncRoute(async (req, res) => {
   const doctorId = idFrom(req.params.id);
   if (!doctorId) return res.status(400).json({ error: 'Invalid doctor ID.' });
   const doctor = await col('doctors').findOne({ id: doctorId });
-  if (!doctor) return res.status(404).json({ error: 'Doctor not found.' });
+  if (!doctor || (req.user.role === 'admin' && !req.user.is_super_admin && doctor.hospital_id !== req.user.hospital_id)) {
+    return res.status(404).json({ error: 'Doctor not found.' });
+  }
   const hosp = await col('hospitals').findOne({ id: doctor.hospital_id });
   return res.json({ doctor: { ...doctor, hospital_name: hosp?.name || 'CareSphere Central Hospital' } });
 }));
 
 module.exports = router;
-

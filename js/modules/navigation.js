@@ -7,7 +7,6 @@ import { renderDoctors } from './doctors.js';
 import { renderRecords } from './records.js';
 import { renderBlockchain } from './blockchain.js';
 import { renderWomensHealth } from './womensHealth.js';
-import { renderPrescriptions } from './prescriptions.js';
 import { renderBilling } from './billing.js';
 import { patientDirectory, renderStaff, renderReports } from './admin.js';
 import { renderSettings } from './settings.js';
@@ -18,18 +17,20 @@ export function toggleSidebar() {
 }
 
 export function buildNav() {
-  const nav = state.role === 'admin' ? adminNav : userNav;
+  const nav = state.role === 'admin'
+    ? adminNav
+    : userNav.filter(([id]) => id !== 'womens-health' || state.gender === 'female');
   let html = nav.map(([id, ico, label]) =>
     `<button class="nav-item ${state.page === id ? 'active' : ''}" onclick="go('${id}')"><span class="nav-ico">${ico}</span>${escapeHtml(label)}</button>`
   ).join('');
-  if (state.role !== 'admin') {
-    html += `<button class="nav-item" onclick="logout()" style="color:#b0382d;margin-top:6px" title="Sign out of your account"><span class="nav-ico">↪</span>Sign out</button>`;
-  }
   const navContainer = document.getElementById('navItems');
   if (navContainer) navContainer.innerHTML = html;
 }
 
 export function go(page) {
+  if (page === 'womens-health' && (state.role !== 'user' || state.gender !== 'female')) {
+    page = 'dashboard';
+  }
   state.page = page;
   document.querySelectorAll('.page-section').forEach(x => x.classList.remove('active'));
   const section = document.getElementById('page-' + page);
@@ -42,7 +43,6 @@ export function go(page) {
     records: 'Health records',
     blockchain: state.role === 'admin' ? 'Blockchain Ledger' : 'Blockchain Vault',
     'womens-health': "Women's Health & PCOS Companion",
-    prescriptions: 'Prescriptions',
     billing: 'Bills & payments',
     patients: 'Patients',
     staff: 'Staff management',
@@ -70,8 +70,6 @@ export function renderAll() {
   if (pBc) pBc.innerHTML = renderBlockchain();
   const whEl = document.getElementById('page-womens-health');
   if (whEl) whEl.innerHTML = renderWomensHealth();
-  const pPresc = document.getElementById('page-prescriptions');
-  if (pPresc) pPresc.innerHTML = renderPrescriptions();
   const pBill = document.getElementById('page-billing');
   if (pBill) pBill.innerHTML = renderBilling();
   const pPat = document.getElementById('page-patients');
@@ -83,4 +81,3 @@ export function renderAll() {
   const pSet = document.getElementById('page-settings');
   if (pSet) pSet.innerHTML = renderSettings();
 }
-

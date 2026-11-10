@@ -18,6 +18,8 @@ export function closeAuth() {
   if (overlay) overlay.classList.add('hidden');
   const nameField = document.getElementById('registerNameField');
   if (nameField) nameField.remove();
+  const genderField = document.getElementById('registerGenderField');
+  if (genderField) genderField.remove();
   if (runtime.authMode === 'register') {
     runtime.authMode = 'login';
     const note = document.getElementById('authModeNote');
@@ -42,12 +44,8 @@ export function setRole(role) {
   const adminBtn = document.getElementById('roleAdmin');
   if (adminBtn) adminBtn.classList.toggle('active', role === 'admin');
 
-  const hospField = document.getElementById('loginHospitalField');
-  const hospLabel = document.getElementById('loginHospitalLabel');
-  const hospBadge = document.getElementById('loginHospitalBadge');
-  const hospNote = document.getElementById('loginHospitalNote');
-  const hospInput = document.getElementById('loginHospital');
   const note = document.getElementById('authModeNote');
+  const loginGenderField = document.getElementById('loginGenderField');
 
   if (role === 'admin') {
     if (runtime.authMode === 'register') {
@@ -55,22 +53,14 @@ export function setRole(role) {
     }
     const nameField = document.getElementById('registerNameField');
     if (nameField) nameField.remove();
+    const genderField = document.getElementById('registerGenderField');
+    if (genderField) genderField.remove();
     if (note) {
-      note.innerHTML = '<small>Administrator access requires credentials configured in .env</small>';
+      note.innerHTML = '<small>Sign in with the email and password provided by your central administrator.</small>';
     }
-    if (hospField) hospField.style.display = 'block';
-    if (hospLabel) hospLabel.textContent = 'Administered Hospital Facility Name';
-    if (hospBadge) {
-      hospBadge.textContent = '🏥 Syncs to .env';
-      hospBadge.style.color = 'var(--green)';
-    }
-    if (hospNote) hospNote.textContent = 'Enter your hospital facility name. Signing in updates your facility and writes ADMIN_HOSPITAL to .env.';
-    if (hospInput && !hospInput.value) {
-      hospInput.value = state.hospitalName || 'CareSphere Central Hospital';
-    }
+    if (loginGenderField) loginGenderField.style.display = 'none';
   } else {
-    // Hide hospital name completely for patient
-    if (hospField) hospField.style.display = 'none';
+    if (loginGenderField) loginGenderField.style.display = runtime.authMode === 'login' ? 'block' : 'none';
     if (note && runtime.authMode === 'login') {
       note.innerHTML = '<span>New to CareSphere?</span> <button type="button" class="link-btn" onclick="toggleAuthMode()">Create an account</button><br><small>Register your patient profile to begin or sign in as administrator.</small>';
     }
@@ -99,12 +89,23 @@ export function toggleAuthMode() {
   let nameField = document.getElementById('registerNameField');
 
   if (runtime.authMode === 'register') {
+    const loginGenderField = document.getElementById('loginGenderField');
+    if (loginGenderField) loginGenderField.style.display = 'none';
     if (!nameField && form) {
       nameField = document.createElement('div');
       nameField.id = 'registerNameField';
       nameField.className = 'field';
       nameField.innerHTML = '<label for="registerName">Full name</label><input id="registerName" name="fullName" type="text" minlength="2" maxlength="80" autocomplete="name" placeholder="Your full name" required>';
       form.insertBefore(nameField, form.firstElementChild);
+    }
+    if (!document.getElementById('registerGenderField') && form) {
+      const genderField = document.createElement('div');
+      genderField.id = 'registerGenderField';
+      genderField.className = 'field';
+      genderField.innerHTML = '<label for="registerGender">Gender</label><select id="registerGender" name="gender" required><option value="" selected disabled>Choose an option</option><option value="female">Female</option><option value="male">Male</option><option value="non_binary">Non-binary</option><option value="prefer_not_to_say">Prefer not to say</option></select><small style="font-size:10.5px;color:var(--muted)">Used to personalize available health features. You can update this in your profile.</small>';
+      const registerName = document.getElementById('registerNameField');
+      if (registerName) registerName.after(genderField);
+      else form.insertBefore(genderField, form.firstElementChild);
     }
     const regInput = document.getElementById('registerName');
     if (regInput) {
@@ -125,9 +126,13 @@ export function toggleAuthMode() {
     if (roleAdminBtn) roleAdminBtn.disabled = true;
     setRole('user');
   } else {
+    const loginGenderField = document.getElementById('loginGenderField');
+    if (loginGenderField) loginGenderField.style.display = state.role === 'admin' ? 'none' : 'block';
     if (nameField) {
       nameField.remove();
     }
+    const genderField = document.getElementById('registerGenderField');
+    if (genderField) genderField.remove();
     const pwdInput = document.getElementById('password');
     if (pwdInput) {
       pwdInput.minLength = 4;
@@ -150,7 +155,7 @@ export async function submitAuth(event) {
   const passInput = document.getElementById('password');
   const email = emailInput ? emailInput.value.trim() : '';
   const password = passInput ? passInput.value : '';
-  const hospitalName = document.getElementById('loginHospital')?.value?.trim() || state.hospitalName || 'CareSphere Central Hospital';
+  const selectedThemeGender = document.getElementById('loginGender')?.value || 'account';
   const form = document.getElementById('loginForm');
   const submit = form ? form.querySelector('button[type="submit"]') : (document.getElementById('authSubmit') || document.querySelector('button[type="submit"]'));
   if (submit) submit.disabled = true;
@@ -159,19 +164,25 @@ export async function submitAuth(event) {
     let result;
     if (runtime.authMode === 'register') {
       const name = document.getElementById('registerName')?.value?.trim() || '';
+      const gender = document.getElementById('registerGender')?.value || '';
       if (!name || name.length < 2) {
         showAuthError('Please enter your full name (at least 2 characters).');
         if (submit) submit.disabled = false;
         return;
       }
+      if (!gender) {
+        showAuthError('Please choose a gender option.');
+        if (submit) submit.disabled = false;
+        return;
+      }
       result = await apiRequest('/api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ name, email, password, hospitalName })
+        body: JSON.stringify({ name, email, password, gender, hospitalName: state.hospitalName })
       });
     } else {
       result = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password, hospitalName })
+        body: JSON.stringify({ email, password })
       });
     }
 
@@ -189,13 +200,16 @@ export async function submitAuth(event) {
     state.email = result.user.email;
     state.name = result.user.name;
     state.role = result.user.role === 'admin' ? 'admin' : 'user';
-    state.hospitalName = result.user.hospital_name || hospitalName || 'CareSphere Central Hospital';
+    state.isSuperAdmin = result.user.is_super_admin === true;
+    state.gender = result.user.gender || 'unspecified';
+    const themePreference = runtime.authMode === 'login' ? selectedThemeGender : 'account';
+    state.themeGender = state.role === 'user'
+      ? (themePreference === 'female' || themePreference === 'male' ? themePreference : state.gender)
+      : 'admin';
+    if (state.role === 'user') localStorage.setItem('caresphere_theme_gender', themePreference);
+    state.hospitalName = result.user.hospital_name || state.hospitalName || 'CareSphere Central Hospital';
     await enterDashboard();
-    if (state.role === 'admin' && hospitalName) {
-      toast(`Signed in as Administrator • Hospital set to "${state.hospitalName}" (.env updated)!`);
-    } else {
-      toast(runtime.authMode === 'register' ? `Account registered for ${state.name}!` : `Welcome back, ${state.name}!`);
-    }
+    toast(runtime.authMode === 'register' ? `Account registered for ${state.name}!` : `Welcome back, ${state.name}!`);
   } catch (err) {
     console.error('Authentication error:', err.message);
     showAuthError(err.message || 'Authentication error. Please check your credentials.');
@@ -211,7 +225,10 @@ export async function enterDashboard() {
   const landingEl = document.getElementById('landing');
   if (landingEl) landingEl.classList.add('hidden');
   const appEl = document.getElementById('app');
-  if (appEl) appEl.classList.remove('hidden');
+  if (appEl) {
+    appEl.dataset.gender = state.role === 'user' ? state.themeGender : 'admin';
+    appEl.classList.remove('hidden');
+  }
 
   const displayName = state.role === 'admin' ? state.name : cleanPatientName(state.name);
   const pName = document.getElementById('profileName');
@@ -225,6 +242,9 @@ export async function enterDashboard() {
     await refreshBackendData();
   } catch (err) {
     console.warn('Could not refresh backend data:', err.message);
+  }
+  if (state.role === 'user' && state.gender === 'female' && typeof window.fetchWomensHealth === 'function') {
+    await window.fetchWomensHealth();
   }
 
   if (typeof window.buildNav === 'function') window.buildNav();
@@ -241,10 +261,18 @@ export async function logout() {
   localStorage.removeItem('caresphere_token');
   localStorage.removeItem('caresphere_user');
   state.appointments = [];
+  runtime.womensHealthData = null;
+  runtime.womensHealthAnswer = null;
   state.email = '';
   state.name = 'Patient';
   state.role = 'user';
+  state.isSuperAdmin = false;
+  state.gender = 'unspecified';
+  state.themeGender = 'unspecified';
   state.hospitalName = 'CareSphere Central Hospital';
+  runtime.adminHospitals = [];
+  runtime.hospitalAdmins = [];
+  localStorage.removeItem('caresphere_theme_gender');
 
   // Clear inputs on landing form
   const emailInput = document.getElementById('email');
@@ -258,7 +286,10 @@ export async function logout() {
   if (typeof window.closeAddDoctorModal === 'function') window.closeAddDoctorModal();
 
   const appEl = document.getElementById('app');
-  if (appEl) appEl.classList.add('hidden');
+  if (appEl) {
+    appEl.classList.add('hidden');
+    delete appEl.dataset.gender;
+  }
   const landingEl = document.getElementById('landing');
   if (landingEl) landingEl.classList.remove('hidden');
   const sb = document.getElementById('sidebar');
@@ -280,8 +311,15 @@ export async function restoreSession() {
       state.email = result.user.email;
       state.name = result.user.name;
       state.role = result.user.role === 'admin' ? 'admin' : 'user';
+      state.isSuperAdmin = result.user.is_super_admin === true;
+      state.gender = result.user.gender || 'unspecified';
+      const savedThemeGender = localStorage.getItem('caresphere_theme_gender');
+      state.themeGender = state.role === 'user'
+        ? (savedThemeGender === 'female' || savedThemeGender === 'male' ? savedThemeGender : state.gender)
+        : 'admin';
       state.hospitalName = result.user.hospital_name || 'CareSphere Central Hospital';
       localStorage.setItem('caresphere_user', JSON.stringify(result.user));
+      runtime.womensHealthData = null;
       await enterDashboard();
     } else {
       localStorage.removeItem('caresphere_token');

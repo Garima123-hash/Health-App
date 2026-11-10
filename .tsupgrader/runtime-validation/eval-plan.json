@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-11-10T11:14:00Z",
+  "generatedOnPlatform": "win32",
+  "projectType": "server",
+  "setup": [],
+  "assertions": [
+    {
+      "name": "server-entry-syntax",
+      "kind": "process",
+      "command": "node",
+      "args": [
+        "--check",
+        "backend/server.js"
+      ],
+      "verificationMethod": "exit-code",
+      "expected": "0",
+      "timeoutSeconds": 30
+    },
+    {
+      "name": "api-health-endpoint",
+      "kind": "http-probe",
+      "startCommand": "node",
+      "startArgs": [
+        "backend/server.js"
+      ],
+      "env": {
+        "PORT": "3188"
+      },
+      "url": "http://127.0.0.1:3188/api/health",
+      "verificationMethod": "http-status",
+      "expected": "200",
+      "timeoutSeconds": 60
+    },
+    {
+      "name": "home-page",
+      "kind": "http-probe",
+      "startCommand": "node",
+      "startArgs": [
+        "backend/server.js"
+      ],
+      "env": {
+        "PORT": "3188"
+      },
+      "url": "http://127.0.0.1:3188/",
+      "verificationMethod": "http-status",
+      "expected": "200",
+      "timeoutSeconds": 60
+    },
+    {
+      "name": "tests-pass",
+      "kind": "process",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "verificationMethod": "test-results",
+      "expected": "0",
+      "timeoutSeconds": 300
+    }
+  ]
+}

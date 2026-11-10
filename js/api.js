@@ -31,14 +31,18 @@ export function formatAppointmentDate(value) {
 export async function refreshBackendData() {
   const requests = [
     apiRequest('/api/appointments').catch(() => ({ appointments: [] })),
-    apiRequest('/api/doctors').catch(() => ({ doctors: [] })),
+    apiRequest(state.role === 'admin' ? '/api/doctors' : '/api/doctors?hospital=all').catch(() => ({ doctors: [] })),
     state.role === 'admin' ? apiRequest('/api/admin/patients').catch(() => ({ patients: [] })) : Promise.resolve({ patients: [] }),
     apiRequest('/api/reports').catch(() => ({ reports: [] })),
-    apiRequest('/api/blockchain').catch(() => ({ blocks: [], validation: { isValid: true } })),
-    apiRequest('/api/hospitals').catch(() => ({ hospitals: [] }))
+    apiRequest('/api/blockchain').catch(() => ({ blocks: [], validation: { isValid: null, length: 0, brokenBlockIndex: null } })),
+    apiRequest('/api/hospitals').catch(() => ({ hospitals: [] })),
+    state.role === 'admin' ? apiRequest('/api/admin/hospitals').catch(() => ({ hospitals: [] })) : Promise.resolve({ hospitals: [] }),
+    state.role === 'admin' && state.isSuperAdmin
+      ? apiRequest('/api/admin/hospital-admins').catch(() => ({ admins: [] }))
+      : Promise.resolve({ admins: [] })
   ];
 
-  const [appointmentData, doctorData, patientData, reportData, blockchainData, hospitalData] = await Promise.all(requests);
+  const [appointmentData, doctorData, patientData, reportData, blockchainData, hospitalData, adminHospitalData, hospitalAdminData] = await Promise.all(requests);
 
   const fetchedAppointments = (appointmentData.appointments || []).map(a => ({
     id: String(a.id),
@@ -56,7 +60,11 @@ export async function refreshBackendData() {
   }));
 
   state.appointments = fetchedAppointments;
-  runtime.apiDoctors = (doctorData.doctors && doctorData.doctors.length > 0) ? doctorData.doctors : fallbackDoctors;
+  runtime.apiDoctors = state.role === 'admin'
+    ? (doctorData.doctors || [])
+    : ((doctorData.doctors && doctorData.doctors.length > 0) ? doctorData.doctors : fallbackDoctors);
+  runtime.adminHospitals = adminHospitalData.hospitals || [];
+  runtime.hospitalAdmins = hospitalAdminData.admins || [];
   runtime.apiPatients = patientData.patients || [];
   runtime.apiReports = (reportData.reports || []).map(r => ({
     id: String(r.id),
@@ -73,11 +81,14 @@ export async function refreshBackendData() {
     category: r.category || 'Diagnostic Report',
     documentHash: r.documentHash || '',
     blockIndex: r.blockIndex || 1,
+    integrityStatus: r.integrityStatus || 'sealed',
+    integrityCheckedAt: r.integrityCheckedAt || null,
+    auditHistory: r.auditHistory || [],
     created_at: r.created_at
   }));
   runtime.apiBlocks = blockchainData.blocks || [];
+  runtime.blockchainValidation = blockchainData.validation || { isValid: null, length: 0, brokenBlockIndex: null };
   if (hospitalData.hospitals && hospitalData.hospitals.length > 0) {
     runtime.apiHospitals = hospitalData.hospitals.map(h => h.name);
   }
 }
-

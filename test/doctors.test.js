@@ -30,4 +30,24 @@ test('administrator doctor creation validates required fields and saves valid do
   assert.equal(created.response.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.doctor.name, 'Dr. Test Doctor');
   assert.equal(created.body.doctor.specialty, 'Cardiology');
+
+  const hospitals = await request(baseUrl, '/api/admin/hospitals', { token: admin.token });
+  assert.equal(hospitals.response.status, 200);
+  const otherHospital = hospitals.body.hospitals.find(hospital => hospital.id !== created.body.doctor.hospital_id);
+  assert.ok(otherHospital, 'administrator should have another assigned hospital');
+
+  const selected = await request(baseUrl, '/api/admin/hospitals/select', {
+    token: admin.token,
+    method: 'POST',
+    body: JSON.stringify({ hospitalId: otherHospital.id })
+  });
+  assert.equal(selected.response.status, 200, JSON.stringify(selected.body));
+
+  const secondRosterDoctor = await request(baseUrl, '/api/admin/doctors', {
+    token: admin.token,
+    method: 'POST',
+    body: JSON.stringify({ name: 'Dr. Test Doctor', specialty: 'Cardiology', experience: '5 years' })
+  });
+  assert.equal(secondRosterDoctor.response.status, 201, JSON.stringify(secondRosterDoctor.body));
+  assert.equal(secondRosterDoctor.body.doctor.hospital_id, otherHospital.id);
 });

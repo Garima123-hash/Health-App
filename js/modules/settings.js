@@ -1,5 +1,5 @@
 // Settings Module: Profile Customization & Admin Hospital Facility Configuration
-import { state } from '../state.js';
+import { state, runtime } from '../state.js';
 import { apiRequest, refreshBackendData } from '../api.js';
 import { escapeHtml, toast, panelHead } from '../components/ui.js';
 
@@ -7,9 +7,8 @@ export function renderSettings() {
   return `<div class="welcome">
     <div>
       <h1>${state.role === 'admin' ? 'System settings' : 'My profile'}</h1>
-      <p>${state.role === 'admin' ? 'Manage workspace preferences, hospital facility name, and system settings.' : 'Manage your personal contact details, preferences, and session.'}</p>
+      <p>${state.role === 'admin' ? 'Manage workspace preferences, hospital facility name, and system settings.' : 'Manage your personal contact details and preferences.'}</p>
     </div>
-    ${state.role !== 'admin' ? '<button class="btn btn-outline" onclick="logout()" style="color:#b0382d;border-color:#f7b8b2;font-weight:750">↪ Sign out</button>' : ''}
   </div>
   <div class="panel" style="max-width:720px">
     ${panelHead('Account information', 'Settings stored in database')}
@@ -22,6 +21,16 @@ export function renderSettings() {
         <label for="profileEmail">Email address</label>
         <input id="profileEmail" type="email" maxlength="254" value="${escapeHtml(state.email)}" required>
       </div>
+      ${state.role !== 'admin' ? `<div class="field">
+        <label for="profileGender">Gender</label>
+        <select id="profileGender" required>
+          <option value="unspecified" ${state.gender === 'unspecified' ? 'selected' : ''}>Not specified</option>
+          <option value="female" ${state.gender === 'female' ? 'selected' : ''}>Female</option>
+          <option value="male" ${state.gender === 'male' ? 'selected' : ''}>Male</option>
+          <option value="non_binary" ${state.gender === 'non_binary' ? 'selected' : ''}>Non-binary</option>
+          <option value="prefer_not_to_say" ${state.gender === 'prefer_not_to_say' ? 'selected' : ''}>Prefer not to say</option>
+        </select>
+      </div>` : ''}
       <div class="field">
         <label for="language">Language</label>
         <select id="language"><option>English</option><option>Hindi</option></select>
@@ -35,16 +44,6 @@ export function renderSettings() {
       <button class="btn btn-primary" type="submit">Save profile changes</button>
     </form>
   </div>
-
-  ${state.role !== 'admin' ? `
-    <div class="panel" style="max-width:720px;margin-top:20px">
-      ${panelHead('Session & Security', 'Sign out of your patient account on this device')}
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Ending your session signs you out safely. Your booked appointments, medical records, and tamper-proof blockchain ledger remain safely stored in MongoDB.</p>
-      <button class="btn btn-outline" type="button" onclick="logout()" style="color:#b0382d;border-color:#f7b8b2;font-weight:750">
-        <span style="font-size:14px">↪</span> Sign out of CareSphere
-      </button>
-    </div>
-  ` : ''}
 
   ${state.role === 'admin' ? `
     <div class="panel" style="max-width:720px;margin-top:20px">
@@ -63,18 +62,35 @@ export async function saveProfile(e) {
   e.preventDefault();
   const name = document.getElementById('profileFullName')?.value?.trim();
   const email = document.getElementById('profileEmail')?.value?.trim();
+  const gender = state.role !== 'admin' ? document.getElementById('profileGender')?.value : undefined;
   try {
     const result = await apiRequest('/api/profile', {
       method: 'PATCH',
-      body: JSON.stringify({ name, email })
+      body: JSON.stringify({ name, email, ...(gender ? { gender } : {}) })
     });
     state.name = result.user.name;
     state.email = result.user.email;
+    state.gender = result.user.gender || state.gender;
+    const themePreference = localStorage.getItem('caresphere_theme_gender');
+    if (state.role !== 'admin' && themePreference !== 'female' && themePreference !== 'male') {
+      state.themeGender = state.gender;
+    }
+    if (gender) {
+      runtime.womensHealthData = null;
+      runtime.womensHealthAnswer = null;
+    }
+    const appEl = document.getElementById('app');
+    if (appEl) appEl.dataset.gender = state.themeGender;
     const pName = document.getElementById('profileName');
     if (pName) pName.textContent = state.name;
     const aInit = document.getElementById('avatarInitials');
     if (aInit) aInit.textContent = state.name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
     if (typeof window.renderAll === 'function') window.renderAll();
+    if (typeof window.buildNav === 'function') window.buildNav();
+    if (gender && state.gender === 'female' && typeof window.fetchWomensHealth === 'function') {
+      await window.fetchWomensHealth();
+      if (typeof window.renderAll === 'function') window.renderAll();
+    }
     toast('Profile updated in MongoDB.');
   } catch (err) {
     if (name) state.name = name;
@@ -112,4 +128,3 @@ export async function saveHospitalName() {
     toast(err.message || 'Could not update hospital facility.');
   }
 }
-

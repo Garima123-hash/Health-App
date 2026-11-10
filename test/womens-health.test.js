@@ -5,8 +5,10 @@ const { login, registerPatient, request, startTestApp, textPdf } = require('../h
 test('optional women’s health workspace stores private logs and retrieves selected local sources', async context => {
   const { baseUrl, adminEmail, adminPassword } = await startTestApp(context);
   const hospitals = await request(baseUrl, '/api/hospitals');
-  const owner = await registerPatient(baseUrl, hospitals.body.hospitals[0].id, 'Health Space Owner');
+  const owner = await registerPatient(baseUrl, hospitals.body.hospitals[0].id, 'Health Space Owner', 'female');
   const otherPatient = await registerPatient(baseUrl, hospitals.body.hospitals[0].id, 'Other Health Space Patient');
+  assert.equal(owner.user.gender, 'female');
+  assert.equal(otherPatient.user.gender, 'male');
   const admin = await login(baseUrl, adminEmail, adminPassword);
   const dateOffset = days => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0,10);
   const moodDate = dateOffset(2);
@@ -17,6 +19,7 @@ test('optional women’s health workspace stores private logs and retrieves sele
 
   assert.equal((await request(baseUrl, '/api/womens-health')).response.status, 401);
   assert.equal((await request(baseUrl, '/api/womens-health', { token: admin.token })).response.status, 403);
+  assert.equal((await request(baseUrl, '/api/womens-health', { token: otherPatient.token })).response.status, 403);
   assert.equal((await request(baseUrl, '/api/womens-health', { token: owner.token })).body.enabled, false);
   const disabledWrite = await request(baseUrl, '/api/womens-health/mood', {
     token: owner.token,
@@ -117,7 +120,7 @@ test('optional women’s health workspace stores private logs and retrieves sele
     method: 'POST',
     body: JSON.stringify({ enabled: true })
   });
-  assert.equal(enableOtherPatient.response.status, 200);
+  assert.equal(enableOtherPatient.response.status, 403);
   const otherHistoryAccess = await request(baseUrl, '/api/womens-health/guide', {
     token: otherPatient.token,
     method: 'POST',
@@ -128,11 +131,20 @@ test('optional women’s health workspace stores private logs and retrieves sele
       reportIds: [report.body.report.id]
     })
   });
-  assert.equal(otherHistoryAccess.response.status, 404);
-  assert.equal((await request(baseUrl, '/api/womens-health', { token: otherPatient.token })).body.enabled, true);
+  assert.equal(otherHistoryAccess.response.status, 403);
+  assert.equal((await request(baseUrl, '/api/womens-health', { token: otherPatient.token })).response.status, 403);
   assert.equal((await request(baseUrl, '/api/womens-health', { token: admin.token })).response.status, 403);
 
   const deleted = await request(baseUrl, '/api/womens-health/data', { token: owner.token, method: 'DELETE' });
   assert.equal(deleted.response.status, 200);
   assert.equal((await request(baseUrl, '/api/womens-health', { token: owner.token })).body.enabled, false);
+
+  const updatedProfile = await request(baseUrl, '/api/profile', {
+    token: owner.token,
+    method: 'PATCH',
+    body: JSON.stringify({ name: owner.user.name, email: owner.email, gender: 'male' })
+  });
+  assert.equal(updatedProfile.response.status, 200, JSON.stringify(updatedProfile.body));
+  assert.equal(updatedProfile.body.user.gender, 'male');
+  assert.equal((await request(baseUrl, '/api/womens-health', { token: owner.token })).response.status, 403);
 });

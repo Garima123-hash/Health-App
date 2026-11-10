@@ -28,7 +28,9 @@ function publicUser(user, hospitalName = '') {
     name: user.role === 'patient' ? cleanPatientName(user.name) : user.name,
     email: user.email,
     role: user.role,
+    is_super_admin: user.role === 'admin' && user.is_super_admin === true,
     age: user.age ?? null,
+    gender: user.gender || 'unspecified',
     hospital_id: user.hospital_id ?? null,
     hospital_name: hospitalName || user.hospital_name || ''
   };
@@ -81,4 +83,3 @@ module.exports = {
   createAccessToken,
   issueAuthTokens
 };
-

@@ -26,6 +26,10 @@ class HealthcareBlockchain {
     return blocks[0] || null;
   }
 
+  static async getBlock(index) {
+    return col('blocks').findOne({ index });
+  }
+
   static async addBlock(type, title, actorId, actorName, data = {}, documentHash = null) {
     const latest = await this.getLatestBlock();
     const index = latest ? latest.index + 1 : 0;
@@ -97,7 +101,11 @@ class HealthcareBlockchain {
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
       const prevHash = i === 0 ? '0'.repeat(64) : blocks[i - 1].hash;
-      const dataHash = this.hashData(b.data);
+      let dataHash = this.hashData(b.data);
+      if (b.type === 'MEDICAL_RECORD') {
+        const record = await col('reports').findOne({ block_index: b.index }, { projection: { document_hash: 1 } });
+        dataHash = record?.document_hash || b.data_hash || dataHash;
+      }
       let nonce = 0;
       let hash = '';
       while (true) {
@@ -131,4 +139,3 @@ class HealthcareBlockchain {
 }
 
 module.exports = { HealthcareBlockchain };
-

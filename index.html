@@ -10,8 +10,8 @@
 <div id="landing" class="landing">
   <header class="topbar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
-    <nav class="toplinks"><a href="#features">Platform</a><a href="#blockchain-preview">Blockchain Vault</a><a href="#about">About</a><button class="btn btn-primary" onclick="openAuth('user')">Sign in <span>↗</span></button></nav>
-    <button class="btn btn-primary" onclick="openAuth('user')">Get started ↗</button>
+    <nav class="toplinks"><a href="#features">Platform</a><a href="#blockchain-preview">Blockchain Vault</a><a href="#about">About</a><button class="btn btn-primary" onclick="openAuth('user')">Get started <span>↗</span></button></nav>
+    <button class="btn btn-primary" onclick="openAuth('user')">Sign in ↗</button>
   </header>
   <main class="hero">
     <section>
@@ -58,17 +58,16 @@
     <h2 class="auth-heading">Welcome back</h2><p class="auth-sub">Sign in to continue to your personalised healthcare workspace.</p>
     <div class="role-switch"><button id="roleUser" class="role-btn active" onclick="setRole('user')">♙ Patient / User</button><button id="roleAdmin" class="role-btn" onclick="setRole('admin')">▦ Administrator</button></div>
     <form id="loginForm" onsubmit="login(event)">
-      <div class="field" id="loginHospitalField" style="display:none">
-        <label for="loginHospital" style="display:flex;align-items:center;justify-content:space-between">
-          <span id="loginHospitalLabel">Administered Hospital Facility Name</span>
-          <span id="loginHospitalBadge" style="font-weight:700;color:var(--green);font-size:10.5px">🏥 Syncs to .env</span>
-        </label>
-        <input id="loginHospital" name="hospitalName" type="text" minlength="2" maxlength="100" placeholder="e.g. CareSphere Central Hospital" autocomplete="organization" value="CareSphere Central Hospital">
-        <small id="loginHospitalNote" style="font-size:10.5px;color:var(--muted);display:block;margin-top:4px">
-          Enter your hospital facility name. Signing in updates your facility and writes ADMIN_HOSPITAL to .env.
-        </small>
-      </div>
       <div class="field"><label for="email">Email address</label><input id="email" type="email" placeholder="you@example.com" required autocomplete="username"></div>
+      <div class="field" id="loginGenderField">
+        <label for="loginGender">Dashboard theme</label>
+        <select id="loginGender">
+          <option value="account" selected>Use my account setting</option>
+          <option value="female">Female (women’s theme)</option>
+          <option value="male">Male (standard theme)</option>
+        </select>
+        <small style="font-size:10.5px;color:var(--muted)">Theme preference only. Women’s Health access is based on the gender saved to your account.</small>
+      </div>
       <div class="field"><label for="password">Password</label><input id="password" type="password" placeholder="Enter your password" required autocomplete="current-password"></div>
       <div class="form-row"><span>Secure session</span><button class="link-btn" type="button" disabled title="Password reset is not connected">Password reset unavailable</button></div>
       <button class="btn btn-primary full" type="submit">Sign in securely →</button>
@@ -289,7 +288,7 @@
   <aside id="sidebar" class="sidebar">
     <div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 4v16M4 12h16" stroke-linecap="round"/></svg></div><div>CareSphere<small>HEALTHCARE, CONNECTED</small></div></div>
     <div class="nav-label">Workspace</div><nav id="navItems"></nav>
-    <div class="sidebar-bottom"><div class="help-card"><strong>Blockchain Vault</strong><p>SHA-256 Ledger protects patient health records from tampering.</p><button class="btn btn-light btn-sm" type="button" onclick="go('blockchain')">Inspect Ledger ⛓</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
+    <div class="sidebar-bottom"><div class="help-card"><strong>Record protection</strong><p>Check that saved medical records have not changed.</p><button class="btn btn-light btn-sm" type="button" onclick="go('blockchain')">Check protection</button></div><button class="nav-item" onclick="logout()"><span class="nav-ico">↪</span> Sign out</button></div>
   </aside>
   <main class="app-main">
     <header class="app-top">
@@ -299,7 +298,7 @@
       </div>
       <div class="top-right">
         <button class="icon-btn" type="button" onclick="showNotifications()" aria-label="Show appointment and billing updates" title="Appointment and billing updates">♧<span class="notification-dot"></span></button>
-        <button class="icon-btn" type="button" onclick="go('blockchain')" aria-label="Blockchain Ledger" title="Inspect Blockchain Ledger">⛓</button>
+        <button class="icon-btn" type="button" onclick="go('blockchain')" aria-label="Record protection" title="Check record protection">⛓</button>
         <div class="profile" onclick="go('settings')" style="cursor:pointer" title="Manage account profile">
           <div class="avatar" id="avatarInitials">VS</div>
           <div>
@@ -307,9 +306,6 @@
             <div class="profile-role" id="profileRole">Patient account</div>
           </div>
         </div>
-        <button class="btn btn-outline btn-sm logout-top-btn" type="button" onclick="logout()" title="Sign out of account" aria-label="Sign out">
-          <span>↪</span><span class="logout-text">Sign out</span>
-        </button>
       </div>
     </header>
     <div class="content">

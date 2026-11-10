@@ -13,10 +13,20 @@ const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
 const { HealthcareBlockchain } = require('../services/blockchain.service');
 
 const router = express.Router();
+const APPOINTMENT_REASONS = new Set([
+  'General consultation',
+  'Follow-up visit',
+  'New or worsening symptoms',
+  'Prescription review',
+  'Test results discussion',
+  'Preventive check-up'
+]);
 
 async function appointmentRows(user) {
   let filter = {};
-  if (user.role !== 'admin') {
+  if (user.role === 'admin' && !user.is_super_admin) {
+    filter = { hospital_id: user.hospital_id };
+  } else if (user.role !== 'admin') {
     const userOr = [{ user_id: user.id }, { user_id: String(user.id) }];
     if (user.email) userOr.push({ patient_email: user.email.toLowerCase() });
     if (user._id) userOr.push({ user_id: String(user._id) });
@@ -73,7 +83,11 @@ router.post('/', requireAuth, asyncRoute(async (req, res) => {
   const db = getDb();
   const doctorId = idFrom(req.body.doctorId);
   const appointmentAt = cleanText(req.body.appointmentAt, 40);
-  const reason = cleanText(req.body.reason || 'Consultation', 120);
+  const reason = cleanText(req.body.reason || 'General consultation', 120);
+  const validReason = APPOINTMENT_REASONS.has(reason) || /^Other:\s+\S.{0,109}$/.test(reason);
+  if (!validReason) {
+    return res.status(400).json({ error: 'Choose a listed reason or provide brief details for “Other”.' });
+  }
 
   const doctor = doctorId && await col('doctors').findOne({ id: doctorId, available: true });
   if (!doctor) return res.status(400).json({ error: 'Please choose a valid doctor.' });
@@ -129,10 +143,16 @@ router.patch('/:id/status', requireAdmin, asyncRoute(async (req, res) => {
   }
 
   const apptId = idFrom(req.params.id);
-  const appointment = await col('appointments').findOne({ id: apptId });
+  const appointment = await col('appointments').findOne({
+    id: apptId,
+    ...(req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id })
+  });
   if (!appointment) return res.status(404).json({ error: 'Appointment not found.' });
 
-  await col('appointments').updateOne({ id: apptId }, { $set: { status } });
+  await col('appointments').updateOne({
+    id: apptId,
+    ...(req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id })
+  }, { $set: { status } });
 
   await HealthcareBlockchain.addBlock(
     'APPOINTMENT_STATUS_UPDATE',
@@ -146,4 +166,3 @@ router.patch('/:id/status', requireAdmin, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-

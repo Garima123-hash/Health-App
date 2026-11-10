@@ -97,6 +97,26 @@ export async function addPatient() {
 
 export function renderStaff() {
   const doctorsList = runtime.apiDoctors.length ? runtime.apiDoctors : fallbackDoctors;
+  const hospitalAdminManager = state.isSuperAdmin ? `
+    <div class="panel" style="margin-bottom:20px">
+      ${panelHead('Hospital administrators', 'Create separate sign-in accounts for each hospital')}
+      <form onsubmit="createHospitalAdmin(event)" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
+        <div class="field"><label for="newHospitalAdminName">Administrator name</label><input id="newHospitalAdminName" name="name" minlength="2" maxlength="80" required></div>
+        <div class="field"><label for="newHospitalAdminEmail">Email address</label><input id="newHospitalAdminEmail" name="email" type="email" maxlength="254" required></div>
+        <div class="field"><label for="newHospitalAdminPassword">Temporary password</label><input id="newHospitalAdminPassword" name="password" type="password" minlength="8" maxlength="128" required></div>
+        <div class="field"><label for="newHospitalAdminHospital">Hospital</label><select id="newHospitalAdminHospital" name="hospitalId" required>
+          <option value="">Choose a hospital</option>
+          ${runtime.adminHospitals.map(hospital => `<option value="${escapeHtml(hospital.id)}">${escapeHtml(hospital.name)}</option>`).join('')}
+        </select></div>
+        <button class="btn btn-primary" type="submit">Create admin account</button>
+      </form>
+      <div id="hospitalAdminError" class="error" role="alert"></div>
+      <div class="table-wrap" style="margin-top:16px"><table>
+        <thead><tr><th>Administrator</th><th>Email</th><th>Hospital</th></tr></thead>
+        <tbody>${runtime.hospitalAdmins.map(admin => `<tr><td>${escapeHtml(admin.name)}</td><td>${escapeHtml(admin.email)}</td><td>${escapeHtml(admin.hospital_name)}</td></tr>`).join('') || '<tr><td colspan="3">No hospital administrator accounts have been created.</td></tr>'}</tbody>
+      </table></div>
+    </div>` : '';
+
   return `<div class="welcome">
     <div>
       <h1>Staff management</h1>
@@ -104,6 +124,7 @@ export function renderStaff() {
     </div>
     <button class="btn btn-primary" onclick="openAddDoctorModal()">➕ Add doctor</button>
   </div>
+  ${hospitalAdminManager}
   <div class="panel">
     ${panelHead('Care team', 'Clinical staff directory')}
     <div class="table-wrap">
@@ -141,6 +162,36 @@ export function renderStaff() {
   </div>`;
 }
 
+export async function createHospitalAdmin(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const errorEl = document.getElementById('hospitalAdminError');
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (errorEl) errorEl.textContent = '';
+  if (submitButton) submitButton.disabled = true;
+
+  try {
+    const formData = new FormData(form);
+    await apiRequest('/api/admin/hospital-admins', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: formData.get('name'),
+        email: formData.get('email'),
+        password: formData.get('password'),
+        hospitalId: formData.get('hospitalId')
+      })
+    });
+    form.reset();
+    await refreshBackendData();
+    if (typeof window.renderAll === 'function') window.renderAll();
+    toast('Hospital administrator account created.');
+  } catch (error) {
+    if (errorEl) errorEl.textContent = error.message || 'Could not create the administrator account.';
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
+}
+
 export function renderReports() {
   return `<div class="welcome">
     <div>
@@ -154,6 +205,7 @@ export function renderReports() {
     ${stat('Doctors available', String(runtime.apiDoctors.length || 6), '🩺', 'Active specialists')}
     ${stat('Connected Hospitals', String(runtime.apiHospitals.length || 3), '🏥', 'Network height')}
     ${stat('Patients registered', String(runtime.apiPatients.length), '👥', 'MongoDB database')}
+    ${stat('Medical records', String(runtime.apiReports.length), '🔐', 'Integrity checks in Records')}
   </div>
   <div class="dashboard-grid">
     <div class="panel">
@@ -170,6 +222,14 @@ export function renderReports() {
             <span>Security</span>
           </div>
           <span class="status active">Done</span>
+        </div>
+        <div class="appointment">
+          <div class="stat-icon">🔐</div>
+          <div class="appointment-info">
+            <strong>Medical record integrity & audit history</strong>
+            <span>Verify stored files against their SHA-256 blockchain anchors.</span>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="go('records')">Review records</button>
         </div>
         <div class="appointment">
           <div class="stat-icon">🏥</div>
@@ -191,4 +251,3 @@ export function renderReports() {
     </div>
   </div>`;
 }
-

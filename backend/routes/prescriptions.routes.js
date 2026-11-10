@@ -17,14 +17,19 @@ const router = express.Router();
 
 async function prescriptionRows(user) {
   const admin = user.role === 'admin';
+  const userFilter = admin
+    ? (user.is_super_admin ? {} : { role: 'patient', hospital_id: user.hospital_id })
+    : { id: user.id };
   const users = await col('users').find(
-    admin ? {} : { id: user.id },
+    userFilter,
     { projection: { id: 1, name: 1 } }
   ).toArray();
   const ids = users.map(item => item.id);
   const [saved, pending] = await Promise.all([
     col('prescriptions').find({ user_id: { $in: ids } }).sort({ created_at: -1 }).toArray(),
-    admin ? col('pending_prescriptions').find({}).sort({ created_at: -1 }).toArray() : []
+    admin ? col('pending_prescriptions').find(
+      user.is_super_admin ? {} : { hospital_id: user.hospital_id }
+    ).sort({ created_at: -1 }).toArray() : []
   ]);
   const doctors = await col('doctors').find().toArray();
   const userMap = new Map(users.map(item => [item.id, item]));
@@ -58,7 +63,14 @@ router.post('/admin', requireAdmin, asyncRoute(async (req, res) => {
   const refills = Number(req.body.refills);
 
   if (!['registered', 'new'].includes(patientType)) return res.status(400).json({ error: 'Choose an existing patient or enter details for a new patient.' });
-  if (patientType === 'registered' && (!userId || !await col('users').findOne({ id: userId, role: 'patient' }))) {
+  const registeredPatient = patientType === 'registered' && userId
+    ? await col('users').findOne({
+      id: userId,
+      role: 'patient',
+      ...(req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id })
+    })
+    : null;
+  if (patientType === 'registered' && !registeredPatient) {
     return res.status(400).json({ error: 'Choose a registered patient at your hospital.' });
   }
   if (patientType === 'new') {
@@ -67,7 +79,10 @@ router.post('/admin', requireAdmin, asyncRoute(async (req, res) => {
     if (await col('users').findOne({ email: patientEmail })) return res.status(409).json({ error: 'This email already has a CareSphere account. Choose that patient from the existing-patient option.' });
   }
   if (req.body.doctorId != null && req.body.doctorId !== '' && !doctorId) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
-  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId })) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
+  if (doctorId !== null && !await col('doctors').findOne({
+    id: doctorId,
+    ...(req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id })
+  })) return res.status(400).json({ error: 'Choose a valid clinician at your hospital.' });
   if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
   if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
 
@@ -99,18 +114,29 @@ router.post('/admin', requireAdmin, asyncRoute(async (req, res) => {
 }));
 
 router.patch('/admin/:id', requireAdmin, asyncRoute(async (req, res) => {
+  const prescriptionId = idFrom(req.params.id);
+  const prescription = await col('prescriptions').findOne({ id: prescriptionId });
+  if (!prescription) return res.status(404).json({ error: 'Prescription not found.' });
+  if (!req.user.is_super_admin && !await col('users').findOne({
+    id: prescription.user_id,
+    role: 'patient',
+    hospital_id: req.user.hospital_id
+  })) return res.status(404).json({ error: 'Prescription not found.' });
   const doctorId = req.body.doctorId === '' || req.body.doctorId == null ? null : idFrom(req.body.doctorId);
   const medication = cleanText(req.body.medication, 120);
   const directions = cleanText(req.body.directions, 500);
   const refills = Number(req.body.refills);
   const status = req.body.status;
   if (req.body.doctorId != null && req.body.doctorId !== '' && !doctorId) return res.status(400).json({ error: 'Choose a valid clinician.' });
-  if (doctorId !== null && !await col('doctors').findOne({ id: doctorId })) return res.status(400).json({ error: 'Choose a valid clinician.' });
+  if (doctorId !== null && !await col('doctors').findOne({
+    id: doctorId,
+    ...(req.user.is_super_admin ? {} : { hospital_id: req.user.hospital_id })
+  })) return res.status(400).json({ error: 'Choose a valid clinician.' });
   if (medication.length < 2 || directions.length < 2) return res.status(400).json({ error: 'Enter the prescription name and directions.' });
   if (!Number.isInteger(refills) || refills < 0 || refills > 20) return res.status(400).json({ error: 'Refills must be a whole number from 0 to 20.' });
   if (!['Active', 'Completed', 'Stopped'].includes(status)) return res.status(400).json({ error: 'Choose a valid prescription status.' });
   const result = await col('prescriptions').updateOne(
-    { id: idFrom(req.params.id) },
+    { id: prescriptionId },
     { $set: { doctor_id: doctorId, medication, directions, refills, status } }
   );
   if (!result.matchedCount) return res.status(404).json({ error: 'Prescription not found.' });
@@ -118,4 +144,3 @@ router.patch('/admin/:id', requireAdmin, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-

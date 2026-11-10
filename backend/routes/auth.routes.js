@@ -14,8 +14,7 @@ const {
   validEmail,
   idFrom,
   nowIso,
-  asyncRoute,
-  updateEnvFile
+  asyncRoute
 } = require('../utils/helpers');
 const {
   readCookie,
@@ -30,24 +29,29 @@ const { ensureHospital } = require('../services/seed.service');
 const { requireAuth } = require('../middleware/auth.middleware');
 
 const router = express.Router();
+const allowedGenders = new Set(['female', 'male', 'non_binary', 'prefer_not_to_say', 'unspecified']);
 
-router.get('/config', (_req, res) => {
-  res.json({
-    defaultHospital: process.env.ADMIN_HOSPITAL || 'CareSphere Central Hospital'
-  });
-});
+router.get('/config', asyncRoute(async (_req, res) => {
+  const configuredName = cleanText(process.env.ADMIN_HOSPITAL || 'CareSphere Central Hospital', 120);
+  const hospital = await col('hospitals').findOne({
+    name_key: configuredName.toLocaleLowerCase('en')
+  }, { projection: { _id: 0, name: 1 } });
+  return res.json({ defaultHospital: hospital?.name || configuredName });
+}));
 
 router.post('/register', asyncRoute(async (req, res) => {
   const db = getDb();
   const name = cleanText(req.body.name, 80);
   const email = cleanText(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
+  const gender = cleanText(req.body.gender, 32).toLowerCase() || 'unspecified';
   const hospitalNameParam = cleanText(req.body.hospitalName || req.body.hospital_name, 100);
   let hospitalId = idFrom(req.body.hospitalId);
 
   if (name.length < 2) return res.status(400).json({ error: 'Please enter your full name (at least 2 characters).' });
   if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
   if (password.length < 4 || password.length > 128) return res.status(400).json({ error: 'Password must contain 4–128 characters.' });
+  if (!allowedGenders.has(gender)) return res.status(400).json({ error: 'Choose a valid gender option.' });
 
   let hospital;
   if (hospitalId) {
@@ -80,6 +84,7 @@ router.post('/register', asyncRoute(async (req, res) => {
     password_hash: await bcrypt.hash(password, 12),
     role: 'patient',
     age,
+    gender,
     hospital_id: hospitalId,
     womens_health_enabled: false,
     created_at: nowIso()
@@ -130,19 +135,18 @@ router.post('/register', asyncRoute(async (req, res) => {
 router.post('/login', asyncRoute(async (req, res) => {
   const email = cleanText(req.body.email, 254).toLowerCase();
   const password = typeof req.body.password === 'string' ? req.body.password : '';
-  const requestedHospital = cleanText(req.body.hospitalName || req.body.hospital_name, 100);
 
   if (!validEmail(email) || !password) return res.status(400).json({ error: 'Enter your email address and password.' });
   const user = await col('users').findOne({ email });
   if (!user || !await bcrypt.compare(password, user.password_hash)) {
     return res.status(401).json({ error: 'Email or password is incorrect.' });
   }
-
-  if (user.role === 'admin' && requestedHospital && requestedHospital.length >= 2) {
-    const hospital = await ensureHospital(requestedHospital);
-    await col('users').updateOne({ id: user.id }, { $set: { hospital_id: hospital.id } });
-    user.hospital_id = hospital.id;
-    updateEnvFile('ADMIN_HOSPITAL', requestedHospital);
+  if (user.role === 'admin') {
+    const assignment = await col('hospital_admins').findOne({
+      user_id: user.id,
+      hospital_id: user.hospital_id
+    }, { projection: { _id: 1 } });
+    if (!assignment) return res.status(403).json({ error: 'This administrator account is not assigned to a hospital.' });
   }
 
   const userData = await userWithHospital(user.id);
@@ -222,4 +226,3 @@ router.post('/logout', asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-

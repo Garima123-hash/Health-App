@@ -4,7 +4,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { col, getDb } = require('../database/connection');
 const { cleanText, isPastOrToday, nowIso, asyncRoute } = require('../utils/helpers');
-const { requirePatient } = require('../middleware/auth.middleware');
+const { requireFemalePatient } = require('../middleware/auth.middleware');
 const { funFacts, retrieveKnowledge } = require('../womens-health-knowledge');
 const { extractReportSentences } = require('../services/pdf.service');
 
@@ -17,7 +17,7 @@ const womensHealthGuideLimiter = rateLimit({
   legacyHeaders: false
 });
 
-router.get('/', requirePatient, asyncRoute(async (req, res) => {
+router.get('/', requireFemalePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.json({ enabled: false });
   const [moodEntries, cycleEntries, reportOptions] = await Promise.all([
@@ -28,13 +28,13 @@ router.get('/', requirePatient, asyncRoute(async (req, res) => {
   return res.json({ enabled: true, moodEntries, cycleEntries, reportOptions, funFacts });
 }));
 
-router.post('/consent', requirePatient, asyncRoute(async (req, res) => {
+router.post('/consent', requireFemalePatient, asyncRoute(async (req, res) => {
   if (typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'Choose whether to enable the optional Women’s Health section.' });
   await col('users').updateOne({ id: req.user.id }, { $set: { womens_health_enabled: req.body.enabled } });
   return res.json({ enabled: req.body.enabled });
 }));
 
-router.post('/mood', requirePatient, asyncRoute(async (req, res) => {
+router.post('/mood', requireFemalePatient, asyncRoute(async (req, res) => {
   const db = getDb();
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before saving check-ins.' });
@@ -67,7 +67,7 @@ router.post('/mood', requirePatient, asyncRoute(async (req, res) => {
   return res.status(201).json({ ok: true, entryDate });
 }));
 
-router.post('/cycle', requirePatient, asyncRoute(async (req, res) => {
+router.post('/cycle', requireFemalePatient, asyncRoute(async (req, res) => {
   const db = getDb();
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before saving cycle dates.' });
@@ -85,7 +85,7 @@ router.post('/cycle', requirePatient, asyncRoute(async (req, res) => {
   return res.status(201).json({ ok: true, startDate, endDate });
 }));
 
-router.post('/guide', womensHealthGuideLimiter, requirePatient, asyncRoute(async (req, res) => {
+router.post('/guide', womensHealthGuideLimiter, requireFemalePatient, asyncRoute(async (req, res) => {
   const user = await col('users').findOne({ id: req.user.id }, { projection: { womens_health_enabled: 1 } });
   if (!user?.womens_health_enabled) return res.status(403).json({ error: 'Enable the optional Women’s Health section before using the health guide.' });
   const question = cleanText(req.body.question, 500);
@@ -144,7 +144,7 @@ router.post('/guide', womensHealthGuideLimiter, requirePatient, asyncRoute(async
   });
 }));
 
-router.delete('/data', requirePatient, asyncRoute(async (req, res) => {
+router.delete('/data', requireFemalePatient, asyncRoute(async (req, res) => {
   await Promise.all([
     col('womens_health_mood_entries').deleteMany({ user_id: req.user.id }),
     col('womens_health_cycle_entries').deleteMany({ user_id: req.user.id }),
@@ -154,4 +154,3 @@ router.delete('/data', requirePatient, asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-

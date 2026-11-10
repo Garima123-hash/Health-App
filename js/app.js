@@ -50,6 +50,7 @@ import {
   filterDoctorHospital,
   filterDepartment,
   applyDoctorFilters,
+  selectAdminHospital,
   openAddDoctorModal,
   closeAddDoctorModal,
   submitAddDoctor
@@ -64,6 +65,8 @@ import {
   closeAdminUploadReportModal,
   submitAdminStandaloneReport,
   uploadReportFile,
+  explainReportInSimpleLanguage,
+  verifyMedicalRecord,
   renderRecords
 } from './modules/records.js';
 
@@ -84,12 +87,12 @@ import {
   deleteWomensHealthData
 } from './modules/womensHealth.js';
 
-import { renderPrescriptions } from './modules/prescriptions.js';
 import { renderBilling } from './modules/billing.js';
 
 import {
   patientDirectory,
   addPatient,
+  createHospitalAdmin,
   renderStaff,
   renderReports
 } from './modules/admin.js';
@@ -170,6 +173,7 @@ const globalExports = {
   filterDoctorHospital,
   filterDepartment,
   applyDoctorFilters,
+  selectAdminHospital,
   openAddDoctorModal,
   closeAddDoctorModal,
   submitAddDoctor,
@@ -183,6 +187,8 @@ const globalExports = {
   closeAdminUploadReportModal,
   submitAdminStandaloneReport,
   uploadReportFile,
+  explainReportInSimpleLanguage,
+  verifyMedicalRecord,
   renderRecords,
 
   // Blockchain Ledger
@@ -201,12 +207,12 @@ const globalExports = {
   deleteWomensHealthData,
 
   // Prescriptions & Billing
-  renderPrescriptions,
   renderBilling,
 
   // Admin & Settings
   patientDirectory,
   addPatient,
+  createHospitalAdmin,
   renderStaff,
   renderReports,
   renderSettings,
@@ -222,16 +228,9 @@ const globalExports = {
 
 Object.assign(window, globalExports);
 
-// Fetch public environment configurations (e.g. default hospital) on startup
 async function initAppConfig() {
-  try {
-    const config = await apiRequest('/api/auth/config').catch(() => null);
-    if (config && config.defaultHospital) {
-      state.hospitalName = config.defaultHospital;
-      const hospInput = document.getElementById('loginHospital');
-      if (hospInput) hospInput.value = config.defaultHospital;
-    }
-  } catch (_) { }
+  const config = await apiRequest('/api/auth/config').catch(() => null);
+  if (config?.defaultHospital) state.hospitalName = config.defaultHospital;
 }
 
 // Bootstrap Application
