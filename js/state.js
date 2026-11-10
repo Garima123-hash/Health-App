@@ -52,7 +52,6 @@ export const userNav = [
   ['records', '📄', 'Health records'],
   ['blockchain', '⛓️', 'Record protection'],
   ['womens-health', '🌸', "Women's Health"],
-  ['prescriptions', '💊', 'Prescriptions'],
   ['billing', '💳', 'Bills & payments'],
   ['settings', '⚙️', 'My profile']
 ];
