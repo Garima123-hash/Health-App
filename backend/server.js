@@ -26,7 +26,7 @@ const app = express();
 
 // Render terminates HTTPS at its reverse proxy. Trust the single proxy hop in production
 // so express-rate-limit can read the client IP from X-Forwarded-For safely.
-app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : false);
+app.set('trust proxy', 1);
 
 // Security and performance middleware
 app.disable('x-powered-by');
