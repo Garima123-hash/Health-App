@@ -394,7 +394,10 @@ router.patch('/:id/share', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async (req, res) => {
-  if (req.user.role !== 'patient') return res.status(403).json({ error: 'Report summaries are available to patient accounts only.' });
+  // Frontend patient sessions use the role "user"; older backend records may use "patient".
+  if (!['patient', 'user'].includes(String(req.user.role || '').toLowerCase())) {
+    return res.status(403).json({ error: 'Explain Simply is available to patient accounts only.' });
+  }
 
   const reportId = idFrom(req.params.id);
   const ownerConditions = [{ user_id: req.user.id }, { user_id: String(req.user.id) }];
