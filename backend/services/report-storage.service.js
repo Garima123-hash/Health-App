@@ -17,7 +17,7 @@ function encodedObjectPath(storagePath) {
   return String(storagePath).split('/').map(encodeURIComponent).join('/');
 }
 
-async function storageRequest(url, options = {}) {
+async function storageRequest(url, options = {}, { ignoreMissing = false } = {}) {
   const { secretKey } = getStorageConfig();
   let response;
   try {
@@ -36,7 +36,14 @@ async function storageRequest(url, options = {}) {
     throw wrapped;
   }
   if (!response.ok) {
-    const detail = (await response.text()).replace(/[\r\n]+/g, ' ').slice(0, 300);
+    const responseText = await response.text();
+    let payload = {};
+    try { payload = JSON.parse(responseText); } catch (_) {}
+    // Deletion is idempotent: an object already missing from Storage is already deleted.
+    if (ignoreMissing && (response.status === 404 || payload.code === 'NoSuchKey' || Number(payload.statusCode) === 404)) {
+      return response;
+    }
+    const detail = responseText.replace(/[\r\n]+/g, ' ').slice(0, 300);
     const error = new Error(`Supabase Storage request failed (HTTP ${response.status}). ${detail}`);
     error.status = response.status === 404 ? 404 : 502;
     throw error;
@@ -64,7 +71,11 @@ async function downloadReportFile(storagePath) {
 
 async function deleteReportFile(storagePath) {
   const { baseUrl } = getStorageConfig();
-  await storageRequest(`${baseUrl}/storage/v1/object/${STORAGE_BUCKET}/${encodedObjectPath(storagePath)}`, { method: 'DELETE' });
+  await storageRequest(
+    `${baseUrl}/storage/v1/object/${STORAGE_BUCKET}/${encodedObjectPath(storagePath)}`,
+    { method: 'DELETE' },
+    { ignoreMissing: true }
+  );
 }
 
 module.exports = { uploadReportFile, downloadReportFile, deleteReportFile };
