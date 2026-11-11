@@ -426,8 +426,35 @@ router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async 
 }));
 
 router.delete('/:id', requireAuth, asyncRoute(async (req, res) => {
-  const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
+  const report = await col('reports').findOne({
+    id: idFrom(req.params.id),
+    deleted_at: { $exists: false }
+  });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
+
+  const isAdmin = req.user.role === 'admin';
+  const isOwner = String(report.user_id) === String(req.user.id)
+    || (req.user.email && report.patient_email
+      && report.patient_email.toLowerCase() === req.user.email.toLowerCase());
+
+  if (!isAdmin && !isOwner) {
+    return res.status(403).json({ error: 'You can only delete your own medical reports.' });
+  }
+
+  if (isAdmin && !req.user.is_super_admin) {
+    const patient = await col('users').findOne({
+      $or: [
+        { id: report.user_id },
+        { id: Number(report.user_id) },
+        ...(report.patient_email ? [{ email: report.patient_email.toLowerCase() }] : [])
+      ]
+    });
+    if (!patient || String(patient.hospital_id) !== String(req.user.hospital_id)) {
+      return res.status(403).json({ error: 'You can only delete reports belonging to patients at your hospital.' });
+    }
+  }
+
+  // Remove the file, but retain report metadata and audit history.
   if (report.storage_provider === 'supabase' && report.storage_path) {
     await deleteReportFile(report.storage_path);
   } else if (report.stored_name) {
@@ -435,8 +462,32 @@ router.delete('/:id', requireAuth, asyncRoute(async (req, res) => {
       if (error.code !== 'ENOENT') throw error;
     }
   }
-  await col('reports').deleteOne({ id: report.id, user_id: req.user.id });
-  return res.json({ ok: true });
+
+  const deletedAt = nowIso();
+  const actorRole = isAdmin ? 'admin' : 'patient';
+  const auditHash = hashAuditEvent({
+    reportId: report.id,
+    status: 'deleted',
+    actorRole,
+    createdAt: deletedAt,
+    documentHash: report.document_hash || ''
+  });
+  await col('reports').updateOne(
+    { id: report.id, deleted_at: { $exists: false } },
+    { $set: { deleted_at: deletedAt, deleted_by_role: actorRole, deleted_by_user_id: req.user.id } }
+  );
+  await col('medical_record_audits').insertOne({
+    id: await getDb().nextId('medical_record_audits'),
+    report_id: report.id,
+    user_id: report.user_id,
+    event_type: 'deleted',
+    status: 'deleted',
+    actor_role: actorRole,
+    audit_hash: auditHash,
+    provider: medicalRecordLedger.provider,
+    created_at: deletedAt
+  });
+  return res.json({ ok: true, deletedAt, message: 'Report deleted. Audit history has been retained.' });
 }));
 
 module.exports = router;
