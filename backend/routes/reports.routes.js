@@ -15,14 +15,14 @@ const {
 } = require('../utils/helpers');
 const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
 const { reportUpload } = require('../middleware/upload.middleware');
-const { HealthcareBlockchain } = require('../services/blockchain.service');
 const {
   classifyIntegrityStatus,
   hashAuditEvent,
   hashFile,
   medicalRecordLedger
 } = require('../services/medical-record-ledger.service');
-const { extractReportSentences } = require('../services/pdf.service');
+const { extractReportSentencesFromBuffer } = require('../services/pdf.service');
+const { uploadReportFile, downloadReportFile, deleteReportFile } = require('../services/report-storage.service');
 const { ReportSummaryError, summarizeReportText } = require('../services/report-summary.service');
 
 const router = express.Router();
@@ -33,6 +33,17 @@ const reportSummaryLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+async function getReportBuffer(report) {
+  if (report.storage_provider === 'supabase' && report.storage_path) {
+    return downloadReportFile(report.storage_path);
+  }
+  if (report.stored_name) {
+    const legacyPath = path.join(UPLOAD_DIR, report.stored_name);
+    if (fs.existsSync(legacyPath)) return fs.readFileSync(legacyPath);
+  }
+  return null;
+}
 
 async function reportFilterForHospital(user) {
   if (user.is_super_admin) return {};
@@ -156,8 +167,9 @@ const handleReportUpload = async (req, res, next) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a PDF, JPG, or PNG report to upload.' });
   const db = getDb();
 
+  let storagePath;
   try {
-    const fileBuffer = fs.readFileSync(req.file.path);
+    const fileBuffer = req.file.buffer;
     const documentHash = hashFile(fileBuffer);
 
     const isAdmin = req.user.role === 'admin';
@@ -212,6 +224,8 @@ const handleReportUpload = async (req, res, next) => {
     }
 
     const originalName = path.basename(req.file.originalname).replace(/[\r\n"]/g, '_').slice(0, 160);
+    storagePath = `${String(targetUserId)}/${require('node:crypto').randomUUID()}${path.extname(originalName).toLowerCase()}`;
+    await uploadReportFile(storagePath, fileBuffer, req.file.mimetype);
     const report = {
       id: await db.nextId('reports'),
       user_id: targetUserId,
@@ -221,7 +235,8 @@ const handleReportUpload = async (req, res, next) => {
       uploaded_by_role: isAdmin ? 'hospital' : 'patient',
       uploaded_by_name: req.user.name,
       original_name: originalName,
-      stored_name: req.file.filename,
+      storage_provider: 'supabase',
+      storage_path: storagePath,
       mime_type: req.file.mimetype,
       file_size: req.file.size,
       shared_with_hospital: req.body.shareWithHospital === 'true' || isAdmin,
@@ -267,7 +282,11 @@ const handleReportUpload = async (req, res, next) => {
       }
     });
   } catch (err) {
-    fs.unlink(req.file.path, () => {});
+    if (storagePath) {
+      try { await deleteReportFile(storagePath); } catch (cleanupError) {
+        console.error('Supabase upload cleanup failed:', cleanupError.message);
+      }
+    }
     next(err);
   }
 };
@@ -289,14 +308,12 @@ router.get('/:id/download', requireAuth, asyncRoute(async (req, res) => {
     return res.status(403).json({ error: 'Access denied.' });
   }
 
-  const filePath = path.join(UPLOAD_DIR, report.stored_name);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'The report file is no longer available on disk.' });
-  }
+  const fileBuffer = await getReportBuffer(report);
+  if (!fileBuffer) return res.status(404).json({ error: 'The report file is no longer available. Please upload it again.' });
 
   res.setHeader('Content-Type', report.mime_type || 'application/octet-stream');
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(report.original_name)}"`);
-  return res.sendFile(filePath);
+  return res.send(fileBuffer);
 }));
 
 router.post('/:id/verify', requireAuth, asyncRoute(async (req, res) => {
@@ -308,10 +325,10 @@ router.post('/:id/verify', requireAuth, asyncRoute(async (req, res) => {
     || (req.user.email && report.patient_email && report.patient_email.toLowerCase() === req.user.email.toLowerCase());
   if (req.user.role !== 'admin' && !isOwner) return res.status(403).json({ error: 'Access denied.' });
 
-  const filePath = path.join(UPLOAD_DIR, report.stored_name);
-  const fileExists = fs.existsSync(filePath);
+  const fileBuffer = await getReportBuffer(report);
+  const fileExists = Boolean(fileBuffer);
   const ledgerResult = await medicalRecordLedger.verifyRecordAnchor(report);
-  const fileMatches = fileExists && hashFile(fs.readFileSync(filePath)) === report.document_hash;
+  const fileMatches = fileExists && hashFile(fileBuffer) === report.document_hash;
   const status = classifyIntegrityStatus({
     fileExists,
     fileMatches,
@@ -377,13 +394,9 @@ router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async 
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
   if (report.mime_type !== 'application/pdf') return res.status(415).json({ error: 'AI explanations currently support PDF reports only.' });
-  const reportFilePath = path.join(UPLOAD_DIR, report.stored_name);
-  if (!fs.existsSync(reportFilePath)) {
-    return res.status(404).json({
-      error: 'This PDF is missing from server storage. Please upload the report again. Configure a Render Persistent Disk to prevent uploaded files from disappearing after redeploys.'
-    });
-  }
-  const { sentences, pagesRead, totalPages } = await extractReportSentences(report.stored_name);
+  const fileBuffer = await getReportBuffer(report);
+  if (!fileBuffer) return res.status(404).json({ error: 'This PDF is missing from storage. Please upload the report again.' });
+  const { sentences, pagesRead, totalPages } = await extractReportSentencesFromBuffer(fileBuffer);
   if (!sentences.length) return res.status(422).json({ error: 'No selectable text was found. Scanned PDFs and images need OCR, which is not enabled.' });
   let explanation;
   try {
@@ -413,8 +426,12 @@ router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async 
 router.delete('/:id', requireAuth, asyncRoute(async (req, res) => {
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
-  try { fs.unlinkSync(path.join(UPLOAD_DIR, report.stored_name)); } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+  if (report.storage_provider === 'supabase' && report.storage_path) {
+    await deleteReportFile(report.storage_path);
+  } else if (report.stored_name) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, report.stored_name)); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
   }
   await col('reports').deleteOne({ id: report.id, user_id: req.user.id });
   return res.json({ ok: true });
