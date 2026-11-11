@@ -23,19 +23,19 @@ async function extractReportSentencesFromBuffer(buffer, maxPages = 20) {
     const pageText = content.items
       .map(item => {
         const value = typeof item.str === 'string' ? item.str : '';
-        return value + (item.hasEOL ? '\\n' : ' ');
+        return value + (item.hasEOL ? '\n' : ' ');
       })
       .join('')
-      .split('\\n')
-      .map(line => line.replace(/[\\t ]+/g, ' ').trim())
+      .split('\n')
+      .map(line => line.replace(/[\t ]+/g, ' ').trim())
       .filter(Boolean)
-      .join('\\n');
+      .join('\n');
     pageTexts.push(pageText);
   }
 
-  const text = pageTexts.join('\\n\\n').trim();
+  const text = pageTexts.join('\n\n').trim();
   const sentences = text
-    .split(/(?<=[.!?])\\s+|\\n+/)
+    .split(/(?<=[.!?])\\s+|\n+/)
     .map(sentence => sentence.trim())
     .filter(Boolean);
 
