@@ -37,8 +37,12 @@ export async function deleteMedicalReport(reportId) {
   if (!confirmed) return;
   try {
     await apiRequest('/api/reports/' + encodeURIComponent(report.id), { method: 'DELETE' });
+
+    // Remove it from the local list immediately. If the following refresh fails,
+    // refreshBackendData keeps this already-filtered list rather than restoring
+    // the deleted report.
+    runtime.apiReports = runtime.apiReports.filter(item => String(item.id) !== String(report.id));
     await refreshBackendData();
-    ensureUploadedReportVisible(result.report);
     if (typeof window.renderAll === 'function') window.renderAll();
     const modal = document.getElementById('patientRecordsModalOverlay');
     if (state.role === 'admin' && modal && modal.getAttribute('aria-hidden') === 'false') {
