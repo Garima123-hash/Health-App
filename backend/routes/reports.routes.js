@@ -282,7 +282,10 @@ const handleReportUpload = async (req, res, next) => {
         documentHash: report.document_hash,
         blockIndex: report.block_index,
         shared_with_hospital: report.shared_with_hospital ? 1 : 0,
-        status: report.status
+        status: report.status,
+        uploadedByRole: report.uploaded_by_role,
+        uploadedByName: report.uploaded_by_name,
+        created_at: report.created_at
       }
     });
   } catch (err) {
