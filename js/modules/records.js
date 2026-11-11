@@ -78,15 +78,17 @@ export async function explainReportInSimpleLanguage(reportId) {
     });
     const sources = Array.isArray(result.sources) ? result.sources : [];
     const keyPoints = Array.isArray(result.keyPoints) ? result.keyPoints : [];
+    const testResults = Array.isArray(result.testResults) ? result.testResults : [];
     const terms = Array.isArray(result.terms) ? result.terms : [];
     const questions = Array.isArray(result.questions) ? result.questions : [];
     const precautions = Array.isArray(result.precautions) ? result.precautions : [];
 
     panel.innerHTML = `<section class="record-summary-card" aria-live="polite">
       <h3>In simple words</h3>
-      <p class="record-summary-method">${result.demoMode ? 'Prototype demonstration · AI service unavailable' : `AI analysis + report-matched references · ${sources.length} source${sources.length === 1 ? '' : 's'}`}</p>
+      <p class="record-summary-method">${result.demoMode ? 'Prototype demonstration · AI service unavailable' : `AI analysis · ${testResults.length} test result${testResults.length === 1 ? '' : 's'} · ${sources.length} reference${sources.length === 1 ? '' : 's'}`}</p>
       <p>${escapeHtml(result.overview || 'The AI did not return a summary. Please try again.')}</p>
       ${keyPoints.length ? `<h4>What the report says</h4><ul>${keyPoints.map(point => `<li>${escapeHtml(point)}</li>`).join('')}</ul>` : ''}
+      ${testResults.length ? `<h4>Extracted test results</h4><div class="record-summary-table-wrap"><table class="record-summary-table"><thead><tr><th>Test</th><th>Result</th><th>Unit</th><th>Reference range</th><th>Status</th><th>Explanation</th></tr></thead><tbody>${testResults.map(item => `<tr><td>${escapeHtml(item.testName)}</td><td>${escapeHtml(item.value)}</td><td>${escapeHtml(item.unit || '—')}</td><td>${escapeHtml(item.referenceRange || 'Not shown')}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.explanation)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="record-summary-notice">The AI could not identify structured test-result rows in the extracted text. Review the original PDF before relying on this explanation.</p>'}
       ${terms.length ? `<h4>Medical terms explained</h4><dl>${terms.map(item => `<dt>${escapeHtml(item.term)}</dt><dd>${escapeHtml(item.explanation)}</dd>`).join('')}</dl>` : ''}
       ${questions.length ? `<h4>Questions you may ask your clinician</h4><ul>${questions.map(question => `<li>${escapeHtml(question)}</li>`).join('')}</ul>` : ''}
       ${precautions.length ? `<h4>Keep in mind</h4><ul>${precautions.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
