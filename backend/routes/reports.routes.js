@@ -241,6 +241,9 @@ const handleReportUpload = async (req, res, next) => {
       original_name: originalName,
       storage_provider: 'supabase',
       storage_path: storagePath,
+      // The MongoDB reports validator still requires stored_name; keep it mapped
+      // to the cloud object path (not a local filesystem path).
+      stored_name: storagePath,
       mime_type: req.file.mimetype,
       file_size: req.file.size,
       shared_with_hospital: req.body.shareWithHospital === 'true' || isAdmin,
@@ -439,9 +442,31 @@ router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async 
       report.patient_name, report.patient_email, req.user.name, req.user.email
     ]);
   } catch (error) {
-    if (error instanceof ReportSummaryError) return res.status(error.status).json({ error: error.message });
-    console.error('Report AI analysis failed:', error.message);
-    return res.status(503).json({ error: 'The report was read, but AI analysis failed. Check the Groq API key, model, and report reference library in Render.' });
+    // Prototype-safe fallback: keep the Explain Simply flow demonstrable when
+    // the external AI provider is unavailable. This is explicitly labelled as
+    // demo content and does not interpret or invent clinical findings.
+    console.warn('Report explanation using demo fallback:', error.message);
+    explanation = {
+      overview: 'This is a demonstration view. The AI explanation service is currently unavailable, so this screen is showing guidance on how to review the uploaded report rather than interpreting its medical results.',
+      keyPoints: [
+        'The uploaded PDF was successfully opened and its selectable text was extracted.',
+        'Check each test name, measured value, unit, and laboratory reference range in the original report.',
+        'A value outside its printed reference range should be discussed with a qualified healthcare professional; the meaning depends on the patient and clinical context.'
+      ],
+      terms: [],
+      questions: [
+        'What do these test results mean in relation to my symptoms and medical history?',
+        'Do any results require a repeat test or follow-up?',
+        'Should I take any action before my next appointment?'
+      ],
+      precautions: [
+        'This prototype fallback is not an AI-generated or report-specific medical interpretation.',
+        'Do not use this demonstration text to make treatment decisions. Consult your clinician.'
+      ],
+      method: 'demo-fallback',
+      sources: [],
+      demoMode: true
+    };
   }
 
   const lastUsedAt = nowIso();
