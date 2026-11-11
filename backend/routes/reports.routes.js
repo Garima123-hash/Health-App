@@ -85,6 +85,7 @@ router.get('/', requireAuth, asyncRoute(async (req, res) => {
     filter = await reportFilterForHospital(req.user);
   }
 
+  filter.deleted_at = { $exists: false };
   const reports = await col('reports').find(filter).sort({ created_at: -1 }).toArray();
   const audits = reports.length
     ? await col('medical_record_audits').aggregate([
@@ -146,6 +147,7 @@ router.get('/', requireAuth, asyncRoute(async (req, res) => {
 
 router.get('/admin', requireAdmin, asyncRoute(async (req, res) => {
   const filter = await reportFilterForHospital(req.user);
+  filter.deleted_at = { $exists: false };
   const reports = await col('reports').find(filter).sort({ created_at: -1 }).toArray();
   const users = await col('users').find({ role: 'patient' }).toArray();
   const userMap = new Map(users.map(u => [u.id, u]));
