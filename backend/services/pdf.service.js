@@ -35,7 +35,7 @@ async function extractReportSentencesFromBuffer(buffer, maxPages = 20) {
 
   const text = pageTexts.join('\n\n').trim();
   const sentences = text
-    .split(/(?<=[.!?])\\s+|\n+/)
+    .split(/(?<=[.!?])\s+|\n+/)
     .map(sentence => sentence.trim())
     .filter(Boolean);
 
