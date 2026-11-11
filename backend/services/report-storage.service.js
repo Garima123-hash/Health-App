@@ -24,8 +24,9 @@ async function storageRequest(url, options = {}, { ignoreMissing = false } = {})
     response = await fetch(url, {
       ...options,
       headers: {
+        // Supabase sb_secret_* keys are API keys, not JWTs. Do not send them as Bearer tokens.
         apikey: secretKey,
-        Authorization: `Bearer ${secretKey}`,
+        ...(secretKey.startsWith('sb_') ? {} : { Authorization: `Bearer ${secretKey}` }),
         ...(options.headers || {})
       },
       signal: AbortSignal.timeout(30000)

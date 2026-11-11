@@ -2,15 +2,24 @@
 import { state, runtime, fallbackDoctors } from './state.js';
 
 export async function apiRequest(url, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(options.headers || {})
+  };
+  // Let the browser generate the multipart boundary for FormData.
+  if (isFormData) {
+    delete headers['Content-Type'];
+    delete headers['content-type'];
+  }
   const token = localStorage.getItem('caresphere_token');
   if (token && !headers.Authorization && !headers.authorization) {
     headers.Authorization = `Bearer ${token}`;
   }
   const response = await fetch(url, {
     credentials: 'same-origin',
-    headers,
-    ...options
+    ...options,
+    headers
   });
   let data = {};
   try { data = await response.json(); } catch (_) {}
@@ -33,7 +42,10 @@ export async function refreshBackendData() {
     apiRequest('/api/appointments').catch(() => ({ appointments: [] })),
     apiRequest(state.role === 'admin' ? '/api/doctors' : '/api/doctors?hospital=all').catch(() => ({ doctors: [] })),
     state.role === 'admin' ? apiRequest('/api/admin/patients').catch(() => ({ patients: [] })) : Promise.resolve({ patients: [] }),
-    apiRequest('/api/reports').catch(() => ({ reports: [] })),
+    apiRequest('/api/reports').catch(error => {
+      console.error('Could not refresh medical reports:', error.message);
+      return { reports: runtime.apiReports || [] };
+    }),
     apiRequest('/api/blockchain').catch(() => ({ blocks: [], validation: { isValid: null, length: 0, brokenBlockIndex: null } })),
     apiRequest('/api/hospitals').catch(() => ({ hospitals: [] })),
     state.role === 'admin' ? apiRequest('/api/admin/hospitals').catch(() => ({ hospitals: [] })) : Promise.resolve({ hospitals: [] }),

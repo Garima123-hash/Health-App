@@ -282,7 +282,10 @@ const handleReportUpload = async (req, res, next) => {
         documentHash: report.document_hash,
         blockIndex: report.block_index,
         shared_with_hospital: report.shared_with_hospital ? 1 : 0,
-        status: report.status
+        status: report.status,
+        uploadedByRole: report.uploaded_by_role,
+        uploadedByName: report.uploaded_by_name,
+        created_at: report.created_at
       }
     });
   } catch (err) {
@@ -394,35 +397,64 @@ router.patch('/:id/share', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async (req, res) => {
-  if (req.user.role !== 'patient') return res.status(403).json({ error: 'Report summaries are available to the patient who uploaded the file.' });
-  const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
-  if (!report) return res.status(404).json({ error: 'Report not found.' });
+  // Frontend patient sessions use the role "user"; older backend records may use "patient".
+  if (!['patient', 'user'].includes(String(req.user.role || '').toLowerCase())) {
+    return res.status(403).json({ error: 'Explain Simply is available to patient accounts only.' });
+  }
+
+  const reportId = idFrom(req.params.id);
+  const ownerConditions = [{ user_id: req.user.id }, { user_id: String(req.user.id) }];
+  if (req.user._id) ownerConditions.push({ user_id: String(req.user._id) });
+  if (req.user.email) ownerConditions.push({ patient_email: req.user.email.toLowerCase() });
+  const report = await col('reports').findOne({
+    id: reportId,
+    deleted_at: { $exists: false },
+    $or: ownerConditions
+  });
+  if (!report) return res.status(404).json({ error: 'Report not found or you do not have access to it.' });
   if (report.mime_type !== 'application/pdf') return res.status(415).json({ error: 'AI explanations currently support PDF reports only.' });
-  const fileBuffer = await getReportBuffer(report);
-  if (!fileBuffer) return res.status(404).json({ error: 'This PDF is missing from storage. Please upload the report again.' });
-  const { sentences, pagesRead, totalPages } = await extractReportSentencesFromBuffer(fileBuffer);
-  if (!sentences.length) return res.status(422).json({ error: 'No selectable text was found. Scanned PDFs and images need OCR, which is not enabled.' });
+
+  let fileBuffer;
+  try {
+    fileBuffer = await getReportBuffer(report);
+  } catch (error) {
+    console.error('Report download from Supabase failed:', error.message);
+    return res.status(error.status || 502).json({ error: 'Could not retrieve this PDF from Supabase Storage. Check the backend Supabase URL, secret key, and bucket permissions.' });
+  }
+  if (!fileBuffer) return res.status(404).json({ error: 'This PDF is missing from storage. Please upload it again.' });
+
+  let extracted;
+  try {
+    extracted = await extractReportSentencesFromBuffer(fileBuffer);
+  } catch (error) {
+    console.error('PDF text extraction failed:', error.message);
+    return res.status(422).json({ error: 'The PDF could not be read. Please upload a valid, non-password-protected PDF.' });
+  }
+  const { sentences, pagesRead, totalPages } = extracted;
+  if (!sentences.length) return res.status(422).json({ error: 'No selectable text was found. This appears to be a scanned PDF; OCR is not enabled yet.' });
+
   let explanation;
   try {
     explanation = await summarizeReportText(sentences.join('\n'), undefined, [
-      report.patient_name,
-      report.patient_email,
-      req.user.name,
-      req.user.email
+      report.patient_name, report.patient_email, req.user.name, req.user.email
     ]);
   } catch (error) {
     if (error instanceof ReportSummaryError) return res.status(error.status).json({ error: error.message });
-    throw error;
+    console.error('Report AI analysis failed:', error.message);
+    return res.status(503).json({ error: 'The report was read, but AI analysis failed. Check the Groq API key, model, and report reference library in Render.' });
   }
+
   const lastUsedAt = nowIso();
+  const usageFilter = { id: report.id, deleted_at: { $exists: false }, $or: ownerConditions };
   const usageUpdate = await col('reports').findOneAndUpdate(
-    { id: report.id, user_id: req.user.id },
+    usageFilter,
     { $inc: { summary_count: 1 }, $set: { summary_last_used_at: lastUsedAt } },
     { returnDocument: 'after', includeResultMetadata: false }
   );
   return res.json({
     ...explanation, pagesRead, totalPages,
-    usageCount: usageUpdate.summary_count, lastUsedAt: usageUpdate.summary_last_used_at,
+    usageCount: usageUpdate?.summary_count ?? ((report.summary_count || 0) + 1),
+    lastUsedAt,
     notice: 'AI-generated explanation uses report-matched local references and may be incomplete or inaccurate. It is not a diagnosis or medical advice. Ask your clinician to interpret the report.'
   });
 }));

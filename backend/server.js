@@ -92,8 +92,13 @@ app.use((error, _req, res, _next) => {
   if (error?.code === 11000) return res.status(409).json({ error: 'A record with those details already exists.' });
   if (error instanceof multer.MulterError) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: error.message });
   if (error?.message === 'Only PDF, JPG and PNG files are allowed.') return res.status(400).json({ error: error.message });
-  console.error('Request failed:', error?.message || 'Unknown server error');
-  return res.status(500).json({ error: 'An unexpected server error occurred.' });
+
+  console.error('Request failed:', error?.stack || error?.message || 'Unknown server error');
+  const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 500;
+  const safeMessage = status < 500 || (status === 502 && /^Could not connect to Supabase Storage:/.test(error?.message || ''))
+    ? error.message
+    : 'An unexpected server error occurred. Check the backend logs for the request details.';
+  return res.status(status).json({ error: safeMessage });
 });
 
 async function start() {
