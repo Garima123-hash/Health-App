@@ -12,39 +12,55 @@ class ReportSummaryError extends Error {
   }
 }
 
-function isStringArray(value) {
-  return Array.isArray(value) && value.every(item => typeof item === 'string' && item.trim());
+function toSafeString(value) {
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
 }
 
 function validateExplanation(value) {
-  const validString = item => typeof item === 'string' && item.trim();
-  if (!value || typeof value !== 'object'
-      || !validString(value.overview)
-      || !Array.isArray(value.keyPoints) || !value.keyPoints.every(validString)
-      || !Array.isArray(value.testResults)
-      || !value.testResults.every(item => item
-        && validString(item.testName)
-        && typeof item.value === 'string'
-        && typeof item.unit === 'string'
-        && typeof item.referenceRange === 'string'
-        && ['normal', 'high', 'low', 'unclear'].includes(item.status)
-        && validString(item.explanation))
-      || !Array.isArray(value.terms)
-      || !value.terms.every(term => term
-        && validString(term.term)
-        && validString(term.explanation))
-      || !Array.isArray(value.questions) || !value.questions.every(validString)
-      || (value.precautions !== undefined
-        && (!Array.isArray(value.precautions) || !value.precautions.every(validString)))) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ReportSummaryError('The AI returned an incomplete or unreadable report analysis. Please try again.');
   }
+
+  const overview = toSafeString(value.overview);
+  const keyPoints = Array.isArray(value.keyPoints) ? value.keyPoints.map(toSafeString).filter(Boolean) : [];
+  const rawResults = Array.isArray(value.testResults) ? value.testResults : null;
+  const terms = Array.isArray(value.terms) ? value.terms : [];
+  const questions = Array.isArray(value.questions) ? value.questions.map(toSafeString).filter(Boolean) : [];
+  const precautions = Array.isArray(value.precautions) ? value.precautions.map(toSafeString).filter(Boolean) : [];
+
+  if (!overview || !rawResults
+      || !rawResults.every(item => item && typeof item === 'object'
+        && toSafeString(item.testName)
+        && ['normal', 'high', 'low', 'unclear'].includes(item.status)
+        && toSafeString(item.explanation))
+      || !terms.every(term => term && typeof term === 'object'
+        && toSafeString(term.term) && toSafeString(term.explanation))) {
+    throw new ReportSummaryError('The AI returned an incomplete or unreadable report analysis. Please try again.');
+  }
+
+  // Models sometimes serialize numeric measurements as JSON numbers or null.
+  // Convert only those scalar fields to strings; never invent missing values.
+  const testResults = rawResults.map(item => ({
+    testName: toSafeString(item.testName),
+    value: toSafeString(item.value),
+    unit: toSafeString(item.unit),
+    referenceRange: toSafeString(item.referenceRange),
+    status: item.status,
+    explanation: toSafeString(item.explanation)
+  }));
+
   return {
-    overview: value.overview,
-    keyPoints: value.keyPoints,
-    testResults: value.testResults,
-    terms: value.terms,
-    questions: value.questions,
-    precautions: value.precautions || []
+    overview,
+    keyPoints,
+    testResults,
+    terms: terms.map(term => ({
+      term: toSafeString(term.term),
+      explanation: toSafeString(term.explanation)
+    })),
+    questions,
+    precautions
   };
 }
 
@@ -78,7 +94,7 @@ async function summarizeReportText(
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_completion_tokens: 1400,
+        max_completion_tokens: 3000,
         response_format: { type: 'json_object' },
         messages: [
           {
