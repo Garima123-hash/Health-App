@@ -3,6 +3,27 @@ import { state, runtime } from '../state.js';
 import { apiRequest, refreshBackendData, cleanPatientName, formatAppointmentDate } from '../api.js';
 import { escapeHtml, toast, panelHead } from '../components/ui.js';
 
+export async function deleteMedicalReport(reportId) {
+  const report = runtime.apiReports.find(item => String(item.id) === String(reportId));
+  if (!report) return;
+  const confirmed = window.confirm('Delete "' + report.original_name + '"? The file will be removed from storage and hidden from the records lists. Its audit history will be retained. This action cannot be undone.');
+  if (!confirmed) return;
+  try {
+    await apiRequest('/api/reports/' + encodeURIComponent(report.id), { method: 'DELETE' });
+    await refreshBackendData();
+    if (typeof window.renderAll === 'function') window.renderAll();
+    const modal = document.getElementById('patientRecordsModalOverlay');
+    if (state.role === 'admin' && modal && modal.getAttribute('aria-hidden') === 'false') {
+      const patientId = document.getElementById('modalTargetPatientId')?.value || report.userId;
+      const patientEmail = document.getElementById('modalTargetPatientEmail')?.value || report.patientEmail;
+      const patientName = document.getElementById('patientRecordsTitle')?.textContent?.replace('Clinical Records: ', '') || report.patientName;
+      renderPatientRecordsModalContent(patientId, patientName, patientEmail);
+    }
+    toast('Report deleted. Audit history retained.');
+  } catch (error) {
+    toast(error.message || 'Could not delete this report.');
+  }
+}
 export async function explainReportInSimpleLanguage(reportId) {
   // Patient accounts are stored in the frontend state as "user" (not "patient").
   if (state.role !== 'user') return;
@@ -197,6 +218,7 @@ export function renderPatientRecordsModalContent(patientId, patientName, patient
           <a href="/api/reports/${encodeURIComponent(r.id)}/download" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;font-size:11px;padding:4px 9px">
             ⬇ Download
           </a>
+          <button type="button" class="link-btn" style="color:var(--danger);font-weight:700" onclick="deleteMedicalReport('${escapeHtml(r.id)}')">Delete</button>
         </div>
       </div>`;
     }).join('');
@@ -445,6 +467,7 @@ export function renderRecords() {
           </a>
           ${!isAdmin && r.mime_type === 'application/pdf' ? `<button class="btn btn-primary btn-sm" type="button" data-report-explain-id="${escapeHtml(r.id)}" onclick="explainReportInSimpleLanguage('${escapeHtml(r.id)}')">Explain simply</button>` : ''}
           ${isAdmin ? `<button class="link-btn" onclick="openPatientRecordsModal('${escapeHtml(r.userId)}', '${escapeHtml(cleanPatientName(r.patientName))}')">History</button>` : ''}
+          <button class="link-btn" style="color:var(--danger);font-weight:700" type="button" onclick="deleteMedicalReport('${escapeHtml(r.id)}')">Delete</button>
         </div>
       </td>
     </tr>
