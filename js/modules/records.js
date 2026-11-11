@@ -3,6 +3,33 @@ import { state, runtime } from '../state.js';
 import { apiRequest, refreshBackendData, cleanPatientName, formatAppointmentDate } from '../api.js';
 import { escapeHtml, toast, panelHead } from '../components/ui.js';
 
+function ensureUploadedReportVisible(report) {
+  if (!report || report.id == null) return;
+  const normalized = {
+    id: String(report.id),
+    userId: String(report.userId || ''),
+    patientName: cleanPatientName(report.patientName || 'Patient'),
+    patientEmail: report.patientEmail || '',
+    hospitalName: report.hospitalName || 'CareSphere Central Hospital',
+    uploadedByRole: report.uploadedByRole || (state.role === 'admin' ? 'hospital' : 'patient'),
+    uploadedByName: report.uploadedByName || 'CareSphere Staff',
+    original_name: report.original_name || 'Medical report',
+    mime_type: report.mime_type || 'application/pdf',
+    file_size: Number(report.file_size || 0),
+    status: report.status || 'Sealed',
+    category: report.category || 'Diagnostic Report',
+    documentHash: report.documentHash || '',
+    blockIndex: report.blockIndex || 1,
+    integrityStatus: 'sealed',
+    integrityCheckedAt: null,
+    auditHistory: [],
+    created_at: report.created_at || new Date().toISOString()
+  };
+  const index = runtime.apiReports.findIndex(item => String(item.id) === normalized.id);
+  if (index >= 0) runtime.apiReports[index] = { ...runtime.apiReports[index], ...normalized };
+  else runtime.apiReports.unshift(normalized);
+}
+
 export async function deleteMedicalReport(reportId) {
   const report = runtime.apiReports.find(item => String(item.id) === String(reportId));
   if (!report) return;
@@ -11,6 +38,7 @@ export async function deleteMedicalReport(reportId) {
   try {
     await apiRequest('/api/reports/' + encodeURIComponent(report.id), { method: 'DELETE' });
     await refreshBackendData();
+    ensureUploadedReportVisible(result.report);
     if (typeof window.renderAll === 'function') window.renderAll();
     const modal = document.getElementById('patientRecordsModalOverlay');
     if (state.role === 'admin' && modal && modal.getAttribute('aria-hidden') === 'false') {
