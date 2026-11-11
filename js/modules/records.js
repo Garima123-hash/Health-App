@@ -257,13 +257,7 @@ export async function submitPatientModalReport(event) {
 
   try {
     toast(`Sealing ${fileInput.files[0].name} on blockchain for patient...`);
-    const res = await fetch('/api/reports/upload', {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: formData
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Failed to upload report');
+    const result = await apiRequest('/api/reports/upload', { method: 'POST', body: formData });
 
     fileInput.value = '';
     await refreshBackendData();
@@ -344,13 +338,7 @@ export async function submitAdminStandaloneReport(event) {
 
   try {
     toast(`Fingerprinting & sealing ${fileInput.files[0].name} on blockchain...`);
-    const res = await fetch('/api/reports/upload', {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: formData
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || 'Failed to upload report');
+    const result = await apiRequest('/api/reports/upload', { method: 'POST', body: formData });
 
     closeAdminUploadReportModal();
     await refreshBackendData();
@@ -376,13 +364,7 @@ export async function uploadReportFile(event) {
 
   try {
     toast(`Calculating SHA-256 fingerprint & sealing ${file.name}...`);
-    const response = await fetch('/api/reports/upload', {
-      method: 'POST',
-      credentials: 'same-origin',
-      body: formData
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Failed to upload report');
+    const result = await apiRequest('/api/reports/upload', { method: 'POST', body: formData });
 
     toast(`Document sealed on Blockchain (Block #${result.report.blockIndex})!`);
     await refreshBackendData();
