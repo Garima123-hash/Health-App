@@ -66,6 +66,7 @@ import {
   submitAdminStandaloneReport,
   uploadReportFile,
   explainReportInSimpleLanguage,
+  deleteMedicalReport,
   verifyMedicalRecord,
   renderRecords
 } from './modules/records.js';
@@ -188,6 +189,7 @@ const globalExports = {
   submitAdminStandaloneReport,
   uploadReportFile,
   explainReportInSimpleLanguage,
+  deleteMedicalReport,
   verifyMedicalRecord,
   renderRecords,
 
