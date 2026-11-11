@@ -12,17 +12,34 @@ async function extractReportSentencesFromBuffer(buffer, maxPages = 20) {
     data: new Uint8Array(buffer),
     verbosity: 0
   }).promise;
-  const sentences = [];
+  const pageTexts = [];
   const pagesRead = Math.min(document.numPages, maxPages);
+
   for (let pageNumber = 1; pageNumber <= pagesRead; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
     const content = await page.getTextContent();
-    const text = content.items.map(item => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim();
-    sentences.push(...(text.match(/(?:[^.!?]|\.(?=\d))+[.!?]?(?=\s|$)/g) || [])
-      .map(sentence => sentence.trim())
-      .filter(sentence => sentence.length > 35));
+    // Preserve PDF line boundaries where pdfjs exposes them. This is important
+    // for laboratory tables containing test names, values, units and ranges.
+    const pageText = content.items
+      .map(item => {
+        const value = typeof item.str === 'string' ? item.str : '';
+        return value + (item.hasEOL ? '\\n' : ' ');
+      })
+      .join('')
+      .split('\\n')
+      .map(line => line.replace(/[\\t ]+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\\n');
+    pageTexts.push(pageText);
   }
-  return { sentences, pagesRead, totalPages: document.numPages };
+
+  const text = pageTexts.join('\\n\\n').trim();
+  const sentences = text
+    .split(/(?<=[.!?])\\s+|\\n+/)
+    .map(sentence => sentence.trim())
+    .filter(Boolean);
+
+  return { text, sentences, pagesRead, totalPages: document.numPages };
 }
 
 async function extractReportSentences(storedName, maxPages = 20) {
