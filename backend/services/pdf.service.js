@@ -6,10 +6,10 @@ const { UPLOAD_DIR } = require('../config');
 
 const pdfjs = import('pdfjs-dist/legacy/build/pdf.mjs');
 
-async function extractReportSentences(storedName, maxPages = 20) {
+async function extractReportSentencesFromBuffer(buffer, maxPages = 20) {
   const { getDocument } = await pdfjs;
   const document = await getDocument({
-    data: new Uint8Array(fs.readFileSync(path.join(UPLOAD_DIR, storedName))),
+    data: new Uint8Array(buffer),
     verbosity: 0
   }).promise;
   const sentences = [];
@@ -25,6 +25,11 @@ async function extractReportSentences(storedName, maxPages = 20) {
   return { sentences, pagesRead, totalPages: document.numPages };
 }
 
+async function extractReportSentences(storedName, maxPages = 20) {
+  return extractReportSentencesFromBuffer(fs.readFileSync(path.join(UPLOAD_DIR, storedName)), maxPages);
+}
+
 module.exports = {
-  extractReportSentences
+  extractReportSentences,
+  extractReportSentencesFromBuffer
 };
