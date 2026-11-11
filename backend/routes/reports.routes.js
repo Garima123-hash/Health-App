@@ -377,6 +377,12 @@ router.post('/:id/summary', requireAuth, reportSummaryLimiter, asyncRoute(async 
   const report = await col('reports').findOne({ id: idFrom(req.params.id), user_id: req.user.id });
   if (!report) return res.status(404).json({ error: 'Report not found.' });
   if (report.mime_type !== 'application/pdf') return res.status(415).json({ error: 'AI explanations currently support PDF reports only.' });
+  const reportFilePath = path.join(UPLOAD_DIR, report.stored_name);
+  if (!fs.existsSync(reportFilePath)) {
+    return res.status(404).json({
+      error: 'This PDF is missing from server storage. Please upload the report again. Configure a Render Persistent Disk to prevent uploaded files from disappearing after redeploys.'
+    });
+  }
   const { sentences, pagesRead, totalPages } = await extractReportSentences(report.stored_name);
   if (!sentences.length) return res.status(422).json({ error: 'No selectable text was found. Scanned PDFs and images need OCR, which is not enabled.' });
   let explanation;
