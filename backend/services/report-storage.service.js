@@ -25,7 +25,6 @@ async function storageRequest(url, options = {}) {
       ...options,
       headers: {
         apikey: secretKey,
-        Authorization: `Bearer ${secretKey}`,
         ...(options.headers || {})
       },
       signal: AbortSignal.timeout(30000)
