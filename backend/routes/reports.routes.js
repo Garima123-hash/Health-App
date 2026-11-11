@@ -241,6 +241,9 @@ const handleReportUpload = async (req, res, next) => {
       original_name: originalName,
       storage_provider: 'supabase',
       storage_path: storagePath,
+      // The MongoDB reports validator still requires stored_name; keep it mapped
+      // to the cloud object path (not a local filesystem path).
+      stored_name: storagePath,
       mime_type: req.file.mimetype,
       file_size: req.file.size,
       shared_with_hospital: req.body.shareWithHospital === 'true' || isAdmin,
