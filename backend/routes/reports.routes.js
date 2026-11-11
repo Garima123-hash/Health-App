@@ -170,6 +170,7 @@ const handleReportUpload = async (req, res, next) => {
   const db = getDb();
 
   let storagePath;
+  let storageUploaded = false;
   try {
     const fileBuffer = req.file.buffer;
     const documentHash = hashFile(fileBuffer);
@@ -228,6 +229,7 @@ const handleReportUpload = async (req, res, next) => {
     const originalName = path.basename(req.file.originalname).replace(/[\r\n"]/g, '_').slice(0, 160);
     storagePath = `${String(targetUserId)}/${require('node:crypto').randomUUID()}${path.extname(originalName).toLowerCase()}`;
     await uploadReportFile(storagePath, fileBuffer, req.file.mimetype);
+    storageUploaded = true;
     const report = {
       id: await db.nextId('reports'),
       user_id: targetUserId,
@@ -284,7 +286,7 @@ const handleReportUpload = async (req, res, next) => {
       }
     });
   } catch (err) {
-    if (storagePath) {
+    if (storagePath && storageUploaded) {
       try { await deleteReportFile(storagePath); } catch (cleanupError) {
         console.error('Supabase upload cleanup failed:', cleanupError.message);
       }
